@@ -1,0 +1,305 @@
+--[[
+NetLog Parser DSL Script: RFC 3164 Syslog Parser
+Device Type: GenericSyslog
+Version: 1.0.0
+Description: Parser for RFC 3164 compliant syslog messages
+
+Supported format:
+<priority>timestamp hostname tag: message
+
+Example messages:
+- <34>Jan 15 10:30:45 server01 sshd[1234]: Accepted password for user from 192.168.1.100
+- <165>Jan 15 10:31:02 router01 kernel: Interface eth0 link up
+- <86>Jan 15 10:31:15 switch01 snmpd[5678]: Connection from UDP: [192.168.1.200]:161
+]]--
+
+local PARSER_NAME = "RFC 3164 Syslog Parser"
+local PARSER_VERSION = "1.0.0"
+local DEVICE_TYPE = "GenericSyslog"
+
+-- RFC 3164 syslog pattern
+local patterns = {
+    -- Standard RFC 3164: <priority>timestamp hostname tag: message
+    standard = "^<(%d+)>(%w+ %d+ %d+:%d+:%d+) (%S+) ([%w%-%._%[%]]+): (.+)$",
+
+    -- Without PID in tag: <priority>timestamp hostname tag: message
+    simple_tag = "^<(%d+)>(%w+ %d+ %d+:%d+:%d+) (%S+) ([%w%-%._%[%]]+): (.+)$",
+
+    -- Alternative format without colon: <priority>timestamp hostname tag message
+    no_colon = "^<(%d+)>(%w+ %d+ %d+:%d+:%d+) (%S+) ([%w%-%._%[%]]+) (.+)$"
+}
+
+-- RFC 3164 facility and severity calculation
+local facilities = {
+    [0] = "kernel",
+    [1] = "user",
+    [2] = "mail",
+    [3] = "daemon",
+    [4] = "auth",
+    [5] = "syslog",
+    [6] = "lpr",
+    [7] = "news",
+    [8] = "uucp",
+    [9] = "cron",
+    [10] = "authpriv",
+    [11] = "ftp",
+    [16] = "local0",
+    [17] = "local1",
+    [18] = "local2",
+    [19] = "local3",
+    [20] = "local4",
+    [21] = "local5",
+    [22] = "local6",
+    [23] = "local7"
+}
+
+local severities = {
+    [0] = "emergency",
+    [1] = "alert",
+    [2] = "critical",
+    [3] = "error",
+    [4] = "warning",
+    [5] = "notice",
+    [6] = "info",
+    [7] = "debug"
+}
+
+function get_parser_name()
+    return PARSER_NAME
+end
+
+function get_version()
+    return PARSER_VERSION
+end
+
+function get_device_type()
+    return DEVICE_TYPE
+end
+
+function get_supported_patterns()
+    local pattern_list = {}
+    for _, pattern in pairs(patterns) do
+        table.insert(pattern_list, pattern)
+    end
+    return pattern_list
+end
+
+function can_parse(raw_message)
+    -- Quick check for RFC 3164 priority format
+    if not string.match(raw_message, "^<%d+>") then
+        return false
+    end
+
+    -- Check if it matches any of our patterns
+    for _, pattern in pairs(patterns) do
+        if string.match(raw_message, pattern) then
+            return true
+        end
+    end
+
+    return false
+end
+
+function parse(raw_message)
+    netlog.log_debug("Parsing RFC 3164 syslog message: " .. raw_message)
+
+    local priority, timestamp_str, hostname, tag, message
+    local parsed = false
+
+    -- Try different patterns
+    for pattern_name, pattern in pairs(patterns) do
+        priority, timestamp_str, hostname, tag, message = string.match(raw_message, pattern)
+        if priority then
+            netlog.log_debug("Matched pattern: " .. pattern_name)
+            parsed = true
+            break
+        end
+    end
+
+    if not parsed then
+        netlog.log_debug("No RFC 3164 pattern matched")
+        return nil
+    end
+
+    local entry = netlog.create_log_entry()
+
+    -- Parse priority into facility and severity
+    local priority_num = tonumber(priority)
+    local facility_code = math.floor(priority_num / 8)
+    local severity_code = priority_num % 8
+
+    -- Parse timestamp
+    entry.timestamp = netlog.parse_timestamp(timestamp_str)
+
+    -- Set severity
+    entry.severity = severities[severity_code] or "info"
+
+    -- Set basic fields
+    entry.hostname = hostname
+    entry.message = message
+
+    -- Parse tag to extract process name and PID
+    local process_name, process_id = parse_tag(tag)
+    entry.process_name = process_name
+    if process_id then
+        entry.process_id = tonumber(process_id)
+    end
+
+    -- Set facility
+    entry.facility = facilities[facility_code] or ("facility" .. facility_code)
+
+    -- Add RFC 3164 specific metadata
+    entry.metadata = {
+        rfc3164_priority = priority,
+        rfc3164_facility_code = facility_code,
+        rfc3164_severity_code = severity_code,
+        rfc3164_tag = tag,
+        message_format = "rfc3164_syslog"
+    }
+
+    -- Parse common syslog message types
+    parse_common_syslog_patterns(entry, process_name, message)
+
+    netlog.log_debug("Successfully parsed RFC 3164 syslog message")
+    return entry
+end
+
+function parse_tag(tag)
+    -- Extract process name and PID from tag like "sshd[1234]" or "kernel"
+    local process_name, process_id = string.match(tag, "^([%w%-%._%]+)%[(%d+)%]$")
+    if process_name then
+        return process_name, process_id
+    else
+        -- Tag without PID
+        return tag, nil
+    end
+end
+
+function parse_common_syslog_patterns(entry, process_name, message)
+    -- SSH authentication messages
+    if process_name == "sshd" then
+        if string.find(message, "Accepted") then
+            local auth_method, user, src_ip = string.match(message, "Accepted (%w+) for (%w+) from ([%d%.]+)")
+            if user then
+                entry.metadata.event_type = "ssh_authentication_success"
+                entry.metadata.auth_method = auth_method
+                entry.metadata.username = user
+                entry.metadata.src_ip = src_ip
+            end
+        elseif string.find(message, "Failed") then
+            local user, src_ip = string.match(message, "Failed .* for (%w+) from ([%d%.]+)")
+            if user then
+                entry.metadata.event_type = "ssh_authentication_failure"
+                entry.metadata.username = user
+                entry.metadata.src_ip = src_ip
+            end
+        elseif string.find(message, "Connection closed") then
+            local src_ip = string.match(message, "from ([%d%.]+)")
+            if src_ip then
+                entry.metadata.event_type = "ssh_connection_closed"
+                entry.metadata.src_ip = src_ip
+            end
+        end
+
+    -- Kernel messages
+    elseif process_name == "kernel" then
+        if string.find(message, "link up") then
+            local interface = string.match(message, "(%w+) link up")
+            if interface then
+                entry.metadata.event_type = "interface_up"
+                entry.metadata.interface = interface
+            end
+        elseif string.find(message, "link down") then
+            local interface = string.match(message, "(%w+) link down")
+            if interface then
+                entry.metadata.event_type = "interface_down"
+                entry.metadata.interface = interface
+            end
+        elseif string.find(message, "segfault") then
+            local process = string.match(message, "(%w+)%[%d+%]: segfault")
+            if process then
+                entry.metadata.event_type = "process_crash"
+                entry.metadata.crashed_process = process
+            end
+        end
+
+    -- DHCP messages
+    elseif process_name == "dhcpd" then
+        if string.find(message, "DHCPACK") then
+            local ip, mac, hostname = string.match(message, "DHCPACK on ([%d%.]+) to ([%x:]+) .* via (%S+)")
+            if ip then
+                entry.metadata.event_type = "dhcp_lease_ack"
+                entry.metadata.assigned_ip = ip
+                entry.metadata.client_mac = mac
+                entry.metadata.client_hostname = hostname
+            end
+        elseif string.find(message, "DHCPREQUEST") then
+            local ip, mac = string.match(message, "DHCPREQUEST for ([%d%.]+) .* from ([%x:]+)")
+            if ip then
+                entry.metadata.event_type = "dhcp_lease_request"
+                entry.metadata.requested_ip = ip
+                entry.metadata.client_mac = mac
+            end
+        end
+
+    -- Cron messages
+    elseif process_name == "CRON" then
+        local user, command = string.match(message, "%((%w+)%) CMD %((.+)%)")
+        if user then
+            entry.metadata.event_type = "cron_job_execution"
+            entry.metadata.cron_user = user
+            entry.metadata.cron_command = command
+        end
+
+    -- Sudo messages
+    elseif process_name == "sudo" then
+        local user, target_user, command = string.match(message, "(%w+) : .* USER=(%w+) ; COMMAND=(.+)")
+        if user then
+            entry.metadata.event_type = "sudo_command_execution"
+            entry.metadata.sudo_user = user
+            entry.metadata.target_user = target_user
+            entry.metadata.sudo_command = command
+        end
+
+    -- Apache/HTTP server messages
+    elseif string.find(process_name, "httpd") or string.find(process_name, "apache") then
+        if string.find(message, "started") then
+            entry.metadata.event_type = "web_server_start"
+        elseif string.find(message, "stopped") then
+            entry.metadata.event_type = "web_server_stop"
+        end
+
+    -- Postfix mail server
+    elseif process_name == "postfix" then
+        if string.find(message, "connect from") then
+            local hostname = string.match(message, "connect from (%S+)")
+            if hostname then
+                entry.metadata.event_type = "mail_connection"
+                entry.metadata.remote_hostname = hostname
+            end
+        end
+    end
+end
+
+function initialize()
+    netlog.log_info("RFC 3164 Syslog Parser v" .. PARSER_VERSION .. " initialized")
+end
+
+function run_self_test()
+    local test_messages = {
+        "<34>Jan 15 10:30:45 server01 sshd[1234]: Accepted password for admin from 192.168.1.100",
+        "<165>Jan 15 10:31:02 router01 kernel: eth0: link up",
+        "<86>Jan 15 10:31:15 switch01 snmpd[5678]: Connection from UDP: [192.168.1.200]:161",
+        "<38>Jan 15 10:32:00 server01 CRON[9999]: (root) CMD (/usr/bin/system-backup.sh)"
+    }
+
+    netlog.log_info("Running self-test for RFC 3164 Syslog Parser")
+
+    for i, msg in ipairs(test_messages) do
+        local can_parse_result = can_parse(msg)
+        local parse_result = parse(msg)
+
+        netlog.log_info(string.format("Test %d - Can parse: %s, Parse result: %s",
+            i, tostring(can_parse_result), parse_result and "success" or "failed"))
+    end
+end

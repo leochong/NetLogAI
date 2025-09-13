@@ -13,9 +13,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(MSVC)
     # Only add warnings as errors if this is the main project
     if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-        add_compile_options(/W4 /WX)
+        add_compile_options(/W3)  # Use W3 instead of W4 to avoid secure CRT warnings
+        add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
     else()
-        add_compile_options(/W3)  # Lower warning level when used as subdirectory
+        add_compile_options(/W2)  # Lower warning level when used as subdirectory
     endif()
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 else()
@@ -46,20 +47,20 @@ if(NOT nlohmann_json_FOUND)
 endif()
 
 # Find Lua for scripting engine
-find_package(Lua QUIET)
-if(NOT LUA_FOUND)
-    # Try unofficial-lua from vcpkg
-    find_package(unofficial-lua CONFIG QUIET)
-    if(unofficial-lua_FOUND)
-        set(LUA_LIBRARIES lua)
-        message(STATUS "Found unofficial-lua from vcpkg")
+find_package(unofficial-lua CONFIG QUIET)
+if(unofficial-lua_FOUND)
+    set(LIBNETLOG_ENABLE_LUA ON)
+    set(LUA_LIBRARIES lua)
+    message(STATUS "Found unofficial-lua from vcpkg")
+else()
+    find_package(Lua QUIET)
+    if(LUA_FOUND)
+        set(LIBNETLOG_ENABLE_LUA ON)
+        message(STATUS "Found Lua: ${LUA_LIBRARIES}")
     else()
         message(WARNING "Lua not found - Lua scripting features will be disabled")
         set(LIBNETLOG_ENABLE_LUA OFF)
     endif()
-else()
-    set(LIBNETLOG_ENABLE_LUA ON)
-    message(STATUS "Found Lua: ${LUA_LIBRARIES}")
 endif()
 
 # Include directories

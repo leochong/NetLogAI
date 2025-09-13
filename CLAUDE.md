@@ -166,3 +166,4 @@ Users configure AI providers via:
 
 This repository represents the foundation phase (Weeks 1-4) focusing on repository setup, scripted parser engine development, and core infrastructure with VS Code/MSVC toolchain integration.
 - Add to rememory. This Github repo plan and recommendation. I will continue this plan tomorrow
+- remember how to checkin to this GitHub repo

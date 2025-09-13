@@ -26,7 +26,11 @@
       "Bash(git checkout:*)",
       "Bash(gh repo create:*)",
       "Bash(gh auth:*)",
-      "Bash(git remote add:*)"
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(\"C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe\" /std:c++20 /I libnetlog/include /I libnetlog/build/_deps/json-src/include /I netlogai-core/vcpkg/installed/x64-windows/include test_lua_parser.cpp libnetlog/build/Release/netlog.lib netlogai-core/vcpkg/installed/x64-windows/lib/lua.lib /Fe:test_parser.exe)",
+      "Bash(\"C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe\" /std:c++20 /I\"libnetlog/include\" /I\"libnetlog/build/_deps/json-src/include\" /I\"netlogai-core/vcpkg/installed/x64-windows/include\" /D\"_CRT_SECURE_NO_WARNINGS\" /D\"LIBNETLOG_ENABLE_LUA=1\" test_lua_parser.cpp libnetlog/build/Release/netlog.lib netlogai-core/vcpkg/installed/x64-windows/lib/lua.lib /Fe:test_parser.exe)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

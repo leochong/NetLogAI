@@ -4,6 +4,7 @@
 
 #include "libnetlog/severity.hpp"
 #include "libnetlog/device_types.hpp"
+#include "libnetlog/utils/timestamp_parser.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -431,11 +432,12 @@ int LuaEngine::lua_parse_timestamp(lua_State* L) {
     }
 
     std::string timestamp_str = lua_tostring(L, 1);
-    // For now, return current timestamp
-    // TODO: Implement actual timestamp parsing
-    auto now = std::chrono::system_clock::now();
-    auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    lua_pushnumber(L, static_cast<lua_Number>(time_t_now));
+
+    // Use the enhanced timestamp parser
+    auto timestamp = libnetlog::utils::TimestampParser::parse(timestamp_str);
+    auto time_t_val = std::chrono::system_clock::to_time_t(timestamp);
+
+    lua_pushnumber(L, static_cast<lua_Number>(time_t_val));
     return 1;
 }
 
