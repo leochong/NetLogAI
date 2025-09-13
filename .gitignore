@@ -1,0 +1,83 @@
+# Build directories
+build/
+bin/
+lib/
+out/
+
+# Visual Studio files
+.vs/
+*.vcxproj.user
+*.sln.docstates
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+# Compiled binaries
+*.exe
+*.dll
+*.lib
+*.pdb
+*.obj
+
+# CRITICAL SECURITY: API keys and secrets
+**/api-keys.json
+**/secrets.json
+**/.env
+**/config/production.json
+
+# Third-party downloads
+third-party/downloads/
+vcpkg/
+
+# License validation files
+license-validation/
+activation/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# IDE-specific files (VS Code, Visual Studio, CLion)
+.vscode/settings.json
+.vscode/launch.json
+*.suo
+*.user
+*.sdf
+*.opensdf
+.idea/
+
+# OS-specific files
+Thumbs.db
+.DS_Store
+
+# Package manager files
+vcpkg/
+conan/
+
+# Test artifacts and coverage reports
+test-results/
+coverage/
+
+# Documentation build files
+docs/_build/
+
+# Compiled Lua bytecode
+*.luac
+
+# Parser test outputs
+test-results/
+coverage/
+
+# Log file samples with sensitive data
+logs/production/
+logs/real-device/
+
+# Project planning and prompt files
+Projectplan.pdf
+CLaude Code Prompt Wk1.txt
+*.pdf
+*prompt*.txt
+*Prompt*.txt
