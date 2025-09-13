@@ -1,0 +1,101 @@
+# Documentation build artifacts
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+.vitepress/dist/
+.vitepress/cache/
+_site/
+dist/
+build/
+
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Documentation generators
+.docusaurus/
+.cache/
+public/
+
+# IDE-specific files
+.vs/
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+*.code-workspace
+.idea/
+*.iml
+
+# OS-specific files
+Thumbs.db
+.DS_Store
+Desktop.ini
+$RECYCLE_BIN/
+*.lnk
+
+# Temporary files
+*.tmp
+*.temp
+*~
+*.bak
+*.orig
+*.swp
+*.swo
+
+# Documentation drafts
+drafts/
+wip/
+*.draft.md
+*.wip.md
+
+# Generated documentation
+auto-generated/
+api-docs/generated/
+reference/auto/
+
+# Local development
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Search indices
+search-index/
+algolia.json
+
+# Analytics and tracking
+.analytics/
+tracking/
+
+# Translation working files
+translations/working/
+*.po~
+*.pot~
+
+# Image optimization artifacts
+optimized-images/
+compressed/
+
+# PDF generation artifacts
+*.pdf
+latex/
+pdf-output/
+
+# Deployment artifacts
+deploy/
+staging/
+
+# Local configuration
+local.config.js
+local.json
+
+# Lighthouse reports
+lighthouse/
+performance-reports/
+
+# Backup files
+backup/
+*.backup

@@ -1,0 +1,244 @@
+-- NetLog Parser Script for Palo Alto Firewall
+-- Version: 1.0.0
+-- Author: NetLogAI Community
+
+-- Parser metadata
+local parser_name = "Palo Alto Firewall Parser"
+local parser_version = "1.0.0"
+local device_type = "PaloAlto"
+
+-- Supported patterns (regex patterns this parser can handle)
+local supported_patterns = {
+    ".*,TRAFFIC,.*",  -- Traffic logs
+    ".*,THREAT,.*",   -- Threat logs
+    ".*,CONFIG,.*",   -- Config logs
+    ".*,SYSTEM,.*"    -- System logs
+}
+
+-- Severity mapping from Palo Alto to standard levels
+local severity_map = {
+    ["informational"] = 6,  -- Info
+    ["low"] = 5,           -- Notice
+    ["medium"] = 4,        -- Warning
+    ["high"] = 3,          -- Error
+    ["critical"] = 2       -- Critical
+}
+
+-- Function to check if this parser can handle a message
+function can_parse(raw_message)
+    -- Palo Alto logs are CSV format with specific structure
+    if not raw_message then return false end
+    
+    -- Check for Palo Alto CSV format indicators
+    local parts = {}
+    for part in string.gmatch(raw_message, "([^,]+)") do
+        table.insert(parts, part)
+    end
+    
+    -- Palo Alto logs typically have many fields (15+)
+    if #parts < 15 then return false end
+    
+    -- Look for log type indicators in common positions
+    for i = 1, math.min(#parts, 10) do
+        local part = parts[i]
+        if part == "TRAFFIC" or part == "THREAT" or part == "CONFIG" or part == "SYSTEM" then
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- Main parsing function
+function parse(raw_message)
+    if not can_parse(raw_message) then
+        return nil
+    end
+    
+    netlog.log_debug("Parsing Palo Alto message: " .. string.sub(raw_message, 1, 100) .. "...")
+    
+    -- Split CSV fields
+    local fields = {}
+    local in_quotes = false
+    local current_field = ""
+    
+    for i = 1, #raw_message do
+        local char = raw_message:sub(i, i)
+        if char == '"' then
+            in_quotes = not in_quotes
+        elseif char == ',' and not in_quotes then
+            table.insert(fields, current_field)
+            current_field = ""
+        else
+            current_field = current_field .. char
+        end
+    end
+    table.insert(fields, current_field)  -- Last field
+    
+    if #fields < 15 then
+        netlog.log_warn("Insufficient fields in Palo Alto log: " .. #fields)
+        return nil
+    end
+    
+    -- Create log entry
+    local entry = netlog.create_log_entry()
+    
+    -- Parse timestamp (typically in first few fields)
+    local timestamp_str = fields[1] or ""
+    if timestamp_str and timestamp_str ~= "" then
+        entry.timestamp = netlog.parse_timestamp(timestamp_str)
+    end
+    
+    -- Determine log type and extract relevant fields
+    local log_type = nil
+    local log_subtype = nil
+    
+    for i = 1, math.min(#fields, 10) do
+        if fields[i] == "TRAFFIC" or fields[i] == "THREAT" or 
+           fields[i] == "CONFIG" or fields[i] == "SYSTEM" then
+            log_type = fields[i]
+            log_subtype = fields[i + 1] or ""
+            break
+        end
+    end
+    
+    if not log_type then
+        netlog.log_warn("Could not determine Palo Alto log type")
+        return nil
+    end
+    
+    -- Set facility and message based on log type
+    entry.facility = "PALOALTO_" .. log_type
+    
+    -- Parse specific fields based on log type
+    if log_type == "TRAFFIC" then
+        entry = parse_traffic_log(entry, fields)
+    elseif log_type == "THREAT" then
+        entry = parse_threat_log(entry, fields)
+    elseif log_type == "CONFIG" then
+        entry = parse_config_log(entry, fields)
+    elseif log_type == "SYSTEM" then
+        entry = parse_system_log(entry, fields)
+    end
+    
+    -- Set metadata
+    entry.metadata = {
+        log_type = log_type,
+        log_subtype = log_subtype,
+        field_count = tostring(#fields),
+        parser = "palo_alto_firewall"
+    }
+    
+    netlog.log_debug("Successfully parsed " .. log_type .. " log")
+    return entry
+end
+
+-- Parse TRAFFIC logs
+function parse_traffic_log(entry, fields)
+    -- Typical Palo Alto TRAFFIC log field positions (approximate)
+    -- This is a simplified mapping - actual positions may vary by version
+    
+    entry.severity = 6  -- Informational by default
+    
+    -- Build message from key fields
+    local src_ip = fields[8] or ""
+    local dst_ip = fields[9] or ""
+    local src_port = fields[10] or ""
+    local dst_port = fields[11] or ""
+    local protocol = fields[12] or ""
+    local action = fields[13] or ""
+    
+    entry.message = string.format("Traffic %s: %s:%s -> %s:%s (%s)", 
+                                 action, src_ip, src_port, dst_ip, dst_port, protocol)
+    
+    -- Add traffic-specific metadata
+    if entry.metadata then
+        entry.metadata.src_ip = src_ip
+        entry.metadata.dst_ip = dst_ip
+        entry.metadata.src_port = src_port
+        entry.metadata.dst_port = dst_port
+        entry.metadata.protocol = protocol
+        entry.metadata.action = action
+    end
+    
+    return entry
+end
+
+-- Parse THREAT logs
+function parse_threat_log(entry, fields)
+    entry.severity = 3  -- Error level for threats
+    
+    local threat_name = fields[15] or "Unknown Threat"
+    local src_ip = fields[8] or ""
+    local dst_ip = fields[9] or ""
+    local action = fields[13] or ""
+    
+    entry.message = string.format("Threat detected: %s from %s to %s (%s)", 
+                                 threat_name, src_ip, dst_ip, action)
+    
+    -- Add threat-specific metadata
+    if entry.metadata then
+        entry.metadata.threat_name = threat_name
+        entry.metadata.src_ip = src_ip
+        entry.metadata.dst_ip = dst_ip
+        entry.metadata.action = action
+    end
+    
+    return entry
+end
+
+-- Parse CONFIG logs
+function parse_config_log(entry, fields)
+    entry.severity = 5  -- Notice level for config changes
+    
+    local admin = fields[5] or "Unknown"
+    local command = fields[8] or "Unknown command"
+    
+    entry.message = string.format("Configuration change by %s: %s", admin, command)
+    
+    -- Add config-specific metadata
+    if entry.metadata then
+        entry.metadata.admin = admin
+        entry.metadata.command = command
+    end
+    
+    return entry
+end
+
+-- Parse SYSTEM logs
+function parse_system_log(entry, fields)
+    entry.severity = 6  -- Informational by default
+    
+    local event_id = fields[6] or ""
+    local description = fields[8] or "System event"
+    
+    entry.message = string.format("System event [%s]: %s", event_id, description)
+    
+    -- Add system-specific metadata
+    if entry.metadata then
+        entry.metadata.event_id = event_id
+        entry.metadata.description = description
+    end
+    
+    return entry
+end
+
+-- Required function: return device type
+function get_device_type()
+    return device_type
+end
+
+-- Required function: return parser name
+function get_parser_name()
+    return parser_name
+end
+
+-- Required function: return parser version
+function get_version()
+    return parser_version
+end
+
+-- Required function: return supported patterns
+function get_supported_patterns()
+    return supported_patterns
+end
