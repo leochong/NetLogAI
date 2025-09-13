@@ -30,7 +30,19 @@
       "Bash(git push:*)",
       "Bash(\"C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe\" /std:c++20 /I libnetlog/include /I libnetlog/build/_deps/json-src/include /I netlogai-core/vcpkg/installed/x64-windows/include test_lua_parser.cpp libnetlog/build/Release/netlog.lib netlogai-core/vcpkg/installed/x64-windows/lib/lua.lib /Fe:test_parser.exe)",
       "Bash(\"C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe\" /std:c++20 /I\"libnetlog/include\" /I\"libnetlog/build/_deps/json-src/include\" /I\"netlogai-core/vcpkg/installed/x64-windows/include\" /D\"_CRT_SECURE_NO_WARNINGS\" /D\"LIBNETLOG_ENABLE_LUA=1\" test_lua_parser.cpp libnetlog/build/Release/netlog.lib netlogai-core/vcpkg/installed/x64-windows/lib/lua.lib /Fe:test_parser.exe)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(./build/Release/netlogai.exe --help)",
+      "Bash(\"C:\\Users\\nevad\\projects\\NetLogAI\\netlogai-core\\build\\Release\\netlogai.exe\" --help)",
+      "Bash(./netlogai)",
+      "Bash(netlogai status:*)",
+      "Read(//c/Users/nevad/**)",
+      "Bash(source ~/.bashrc)",
+      "Bash(netlogai:*)",
+      "Bash(./netlogai-core/build/Release/netlogai.exe status)",
+      "Bash(./netlogai.exe --help)",
+      "Bash(ldd:*)",
+      "Bash(./netlogai.exe parser list)",
+      "Bash(./netlogai.exe config init)"
     ],
     "deny": [],
     "ask": []

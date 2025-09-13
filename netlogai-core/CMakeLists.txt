@@ -84,6 +84,9 @@ file(GLOB_RECURSE COMMON_SOURCES
 file(GLOB CLI_SOURCES
     "src/cli/*.cpp"
     "src/cli/*.hpp"
+)
+
+file(GLOB COMMANDS_SOURCES
     "src/commands/*.cpp"
     "src/commands/*.hpp"
 )
@@ -92,6 +95,7 @@ file(GLOB CLI_SOURCES
 add_executable(netlogai
     src/main.cpp
     ${CLI_SOURCES}
+    ${COMMANDS_SOURCES}
     ${CORE_SOURCES}
     ${COMMON_SOURCES}
 )

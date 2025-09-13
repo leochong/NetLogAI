@@ -1,21 +1,19 @@
 #include "cli/command_line.hpp"
 #include "commands/parser_commands.hpp"
+#include "commands/log_commands.hpp"
+#include "commands/config_commands.hpp"
 #include <iostream>
 
 int main(int argc, char* argv[]) {
     try {
         netlogai::cli::CommandLine cli;
-        
-        // Register parser management commands
+
+        // Register all command modules
         netlogai::commands::ParserCommands::register_commands(cli);
+        netlogai::commands::LogCommands::register_commands(cli);
+        netlogai::commands::ConfigCommands::register_commands(cli);
         
-        // Register placeholder commands for future implementation
-        cli.register_command("log", [](const netlogai::cli::CommandArgs&) {
-            std::cout << "Log management commands not yet implemented.\n";
-            std::cout << "Coming soon: log viewing, filtering, and analysis.\n";
-            return 0;
-        }, "View and manage network logs");
-        
+        // Register additional placeholder commands for future implementation
         cli.register_command("fetch", [](const netlogai::cli::CommandArgs&) {
             std::cout << "Device log fetching not yet implemented.\n";
             std::cout << "Coming soon: automatic log collection from network devices.\n";
