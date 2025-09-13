@@ -1,0 +1,252 @@
+name: libnetlog CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  release:
+    types: [published]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }} - ${{ matrix.config }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022, macos-12]
+        config: [Debug, Release]
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-22.04'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build
+
+    - name: Set up dependencies (macOS)
+      if: matrix.os == 'macos-12'
+      run: |
+        brew install cmake ninja
+
+    - name: Set up MSVC (Windows)
+      if: matrix.os == 'windows-2022'
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -S . \
+          -DCMAKE_BUILD_TYPE=${{ matrix.config }} \
+          -DLIBNETLOG_BUILD_TESTS=ON \
+          -DLIBNETLOG_BUILD_EXAMPLES=ON \
+          -DLIBNETLOG_BUILD_BENCHMARKS=ON
+
+    - name: Build
+      run: cmake --build build --config ${{ matrix.config }} --parallel
+
+    - name: Run tests
+      run: |
+        cd build
+        ctest --output-on-failure --parallel --build-config ${{ matrix.config }}
+
+    - name: Run benchmarks (Release only)
+      if: matrix.config == 'Release'
+      run: |
+        cd build
+        if [ -f ./benchmarks/parser_benchmark ]; then
+          ./benchmarks/parser_benchmark
+        elif [ -f ./benchmarks/Release/parser_benchmark.exe ]; then
+          ./benchmarks/Release/parser_benchmark.exe
+        fi
+
+  code-quality:
+    name: Code Quality Analysis
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake cppcheck clang-format clang-tidy
+
+    - name: Run cppcheck
+      run: |
+        cppcheck --enable=all --inconclusive --xml --xml-version=2 \
+          --suppress=missingIncludeSystem \
+          --suppress=unusedFunction \
+          src/ include/ 2> cppcheck-report.xml
+
+    - name: Upload cppcheck results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: cppcheck-results
+        path: cppcheck-report.xml
+
+    - name: Check code formatting
+      run: |
+        clang-format --dry-run --Werror src/**/*.cpp include/**/*.hpp
+
+    - name: Run clang-tidy
+      run: |
+        cmake -B build -S . -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        clang-tidy src/*.cpp src/**/*.cpp -p build
+
+  documentation:
+    name: Build Documentation
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install doxygen
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y doxygen graphviz
+
+    - name: Generate documentation
+      run: |
+        doxygen docs/Doxyfile
+
+    - name: Upload documentation
+      uses: actions/upload-artifact@v4
+      with:
+        name: documentation
+        path: docs/html/
+
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/main'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs/html
+
+  performance-test:
+    name: Performance Testing
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build
+
+    - name: Build with optimizations
+      run: |
+        cmake -B build -S . \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DLIBNETLOG_BUILD_BENCHMARKS=ON \
+          -DCMAKE_CXX_FLAGS="-O3 -march=native"
+        cmake --build build --parallel
+
+    - name: Generate test data
+      run: |
+        mkdir -p test_data
+        # Generate large test log files
+        for i in {1..1000}; do
+          echo "Dec 15 10:30:15.${i}: %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet0/1, changed state to down" >> test_data/large_test.log
+        done
+
+    - name: Run performance benchmarks
+      run: |
+        cd build
+        ./benchmarks/parser_benchmark --benchmark_format=json --benchmark_out=benchmark_results.json
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: build/benchmark_results.json
+
+  compatibility-test:
+    name: Compatibility Testing
+    runs-on: ubuntu-22.04
+    
+    strategy:
+      matrix:
+        compiler: [gcc-9, gcc-11, clang-12, clang-15]
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install compiler
+      run: |
+        sudo apt-get update
+        if [[ "${{ matrix.compiler }}" == gcc-* ]]; then
+          sudo apt-get install -y ${{ matrix.compiler }} g++-${compiler#gcc-}
+          echo "CC=${{ matrix.compiler }}" >> $GITHUB_ENV
+          echo "CXX=g++-${compiler#gcc-}" >> $GITHUB_ENV
+        else
+          sudo apt-get install -y ${{ matrix.compiler }}
+          echo "CC=${{ matrix.compiler }}" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.compiler }}++" >> $GITHUB_ENV
+        fi
+
+    - name: Configure and build
+      run: |
+        cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+        cmake --build build --parallel
+
+    - name: Run tests
+      run: |
+        cd build
+        ctest --output-on-failure
+
+  package-test:
+    name: Package Installation Test
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-22.04'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake
+
+    - name: Set up MSVC (Windows)
+      if: matrix.os == 'windows-2022'
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Build and install
+      run: |
+        cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=install
+        cmake --build build --parallel
+        cmake --install build
+
+    - name: Test installed package
+      run: |
+        # Create a simple test program
+        mkdir test_install
+        cd test_install
+        cat > test_program.cpp << 'EOF'
+        #include <libnetlog/parsers.hpp>
+        #include <iostream>
+        int main() {
+          auto parser = libnetlog::createParser(libnetlog::DeviceType::CiscoIOS);
+          std::cout << "libnetlog installed successfully!" << std::endl;
+          return 0;
+        }
+        EOF
+        
+        # Try to compile and link against installed library
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          cmake -B build_test -S . -Dlibnetlog_DIR=../install/lib/cmake/libnetlog
+        else
+          PKG_CONFIG_PATH=../install/lib/pkgconfig pkg-config --cflags --libs libnetlog
+        fi
