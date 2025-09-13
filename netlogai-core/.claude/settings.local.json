@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake:*)",
+      "Bash(./scripts/setup-dev-env.bat)",
+      "Bash(git clone:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git submodule:*)",
+      "Bash(vcpkg\\bootstrap-vcpkg.bat:*)",
+      "Bash(call vcpkg\\bootstrap-vcpkg.bat)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

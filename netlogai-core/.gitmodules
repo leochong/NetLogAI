@@ -1,0 +1,14 @@
+[submodule "third-party/libnetlog"]
+	path = third-party/libnetlog
+	url = https://github.com/NetLogAI/libnetlog.git
+	branch = main
+	
+[submodule "third-party/plugin-sdk"]
+	path = third-party/plugin-sdk
+	url = https://github.com/NetLogAI/netlogai-plugin-sdk.git
+	branch = main
+	
+[submodule "third-party/parsers"]
+	path = third-party/parsers
+	url = https://github.com/NetLogAI/netlogai-parsers.git
+	branch = main
