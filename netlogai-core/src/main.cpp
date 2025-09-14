@@ -2,6 +2,8 @@
 #include "commands/parser_commands.hpp"
 #include "commands/log_commands.hpp"
 #include "commands/config_commands.hpp"
+#include "commands/device_commands.hpp"
+#include "commands/ai_commands.hpp"
 #include <iostream>
 
 int main(int argc, char* argv[]) {
@@ -12,20 +14,10 @@ int main(int argc, char* argv[]) {
         netlogai::commands::ParserCommands::register_commands(cli);
         netlogai::commands::LogCommands::register_commands(cli);
         netlogai::commands::ConfigCommands::register_commands(cli);
-        
+        netlogai::commands::DeviceCommands::register_commands(cli);
+        netlogai::commands::AICommands::register_commands(cli);
+
         // Register additional placeholder commands for future implementation
-        cli.register_command("fetch", [](const netlogai::cli::CommandArgs&) {
-            std::cout << "Device log fetching not yet implemented.\n";
-            std::cout << "Coming soon: automatic log collection from network devices.\n";
-            return 0;
-        }, "Fetch logs from network devices");
-        
-        cli.register_command("ask", [](const netlogai::cli::CommandArgs&) {
-            std::cout << "AI-powered analysis not yet implemented.\n";
-            std::cout << "Coming soon: natural language queries about your logs.\n";
-            return 0;
-        }, "AI-powered log analysis queries");
-        
         cli.register_command("analyze", [](const netlogai::cli::CommandArgs&) {
             std::cout << "Advanced analysis not yet implemented.\n";
             std::cout << "Coming soon: pattern detection and correlation analysis.\n";
