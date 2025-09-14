@@ -4,6 +4,8 @@
 #include <sstream>
 #include <nlohmann/json.hpp>
 #include <iostream>
+#include <regex>
+#include <algorithm>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -174,18 +176,45 @@ bool PluginLoader::load_plugin(const std::string& plugin_path) {
     }
 
     // Create plugin instance
-    std::unique_ptr<INetLogAIPlugin> instance = create_func();
-    if (!instance) {
+    INetLogAIPlugin* raw_instance = nullptr;
+    try {
+        raw_instance = create_func();
+    } catch (const std::exception& e) {
+        std::cerr << "Exception creating plugin instance: " << e.what() << std::endl;
+        unload_dynamic_library(handle);
+        return false;
+    } catch (...) {
+        std::cerr << "Unknown exception creating plugin instance" << std::endl;
+        unload_dynamic_library(handle);
+        return false;
+    }
+
+    if (!raw_instance) {
         std::cerr << "Failed to create plugin instance: " << manifest.name << std::endl;
         unload_dynamic_library(handle);
         return false;
     }
 
+    std::unique_ptr<INetLogAIPlugin> instance(raw_instance);
+
     // Verify plugin API compatibility
-    if (instance->get_api_version() != NETLOGAI_PLUGIN_API_VERSION) {
+    std::string plugin_api_version;
+    try {
+        plugin_api_version = instance->get_api_version();
+    } catch (const std::exception& e) {
+        std::cerr << "Exception calling get_api_version: " << e.what() << std::endl;
+        unload_dynamic_library(handle);
+        return false;
+    } catch (...) {
+        std::cerr << "Unknown exception calling get_api_version" << std::endl;
+        unload_dynamic_library(handle);
+        return false;
+    }
+
+    if (plugin_api_version != NETLOGAI_PLUGIN_API_VERSION) {
         std::cerr << "Plugin API version mismatch: " << manifest.name
                   << " (expected: " << NETLOGAI_PLUGIN_API_VERSION
-                  << ", got: " << instance->get_api_version() << ")" << std::endl;
+                  << ", got: " << plugin_api_version << ")" << std::endl;
         unload_dynamic_library(handle);
         return false;
     }
@@ -240,36 +269,118 @@ PluginManifest PluginLoader::parse_plugin_manifest(const std::string& manifest_p
     try {
         std::ifstream file(manifest_path);
         if (!file.is_open()) {
+            std::cerr << "Cannot open manifest file: " << manifest_path << std::endl;
             return manifest;
         }
 
         json j;
         file >> j;
 
+        // Validate manifest structure first
+        if (!validate_manifest_schema(j)) {
+            std::cerr << "Invalid manifest schema: " << manifest_path << std::endl;
+            return manifest;
+        }
+
+        // Parse basic fields
         manifest.name = j.value("name", "");
         manifest.version = j.value("version", "");
         manifest.description = j.value("description", "");
-        manifest.author = j.value("author", "");
         manifest.api_version = j.value("api_version", "");
-        manifest.plugin_type = j.value("plugin_type", "");
+        manifest.plugin_type = j.value("type", j.value("plugin_type", "")); // Support both 'type' and 'plugin_type'
         manifest.entry_point = j.value("entry_point", "");
 
+        // Parse author (can be string or object)
+        if (j.contains("author")) {
+            if (j["author"].is_string()) {
+                manifest.author = j["author"].get<std::string>();
+            } else if (j["author"].is_object()) {
+                manifest.author = j["author"].value("name", "Unknown");
+            }
+        }
+
+        // Parse capabilities array
         if (j.contains("capabilities") && j["capabilities"].is_array()) {
             for (const auto& cap : j["capabilities"]) {
-                manifest.capabilities.push_back(cap.get<std::string>());
+                if (cap.is_string()) {
+                    manifest.capabilities.push_back(cap.get<std::string>());
+                }
             }
         }
 
+        // Parse dependencies array
         if (j.contains("dependencies") && j["dependencies"].is_array()) {
             for (const auto& dep : j["dependencies"]) {
-                manifest.dependencies.push_back(dep.get<std::string>());
+                if (dep.is_string()) {
+                    manifest.dependencies.push_back(dep.get<std::string>());
+                } else if (dep.is_object() && dep.contains("name")) {
+                    // Support object format with name and version
+                    std::string dep_str = dep["name"].get<std::string>();
+                    if (dep.contains("version")) {
+                        dep_str += "@" + dep["version"].get<std::string>();
+                    }
+                    manifest.dependencies.push_back(dep_str);
+                }
             }
         }
 
+        // Parse metadata object
         if (j.contains("metadata") && j["metadata"].is_object()) {
             for (auto& [key, value] : j["metadata"].items()) {
-                manifest.metadata[key] = value.get<std::string>();
+                if (value.is_string()) {
+                    manifest.metadata[key] = value.get<std::string>();
+                } else {
+                    manifest.metadata[key] = value.dump();
+                }
             }
+        }
+
+        // Parse additional optional fields
+        if (j.contains("display_name")) {
+            manifest.metadata["display_name"] = j["display_name"].get<std::string>();
+        }
+        if (j.contains("long_description")) {
+            manifest.metadata["long_description"] = j["long_description"].get<std::string>();
+        }
+        if (j.contains("license")) {
+            manifest.metadata["license"] = j["license"].get<std::string>();
+        }
+        if (j.contains("homepage")) {
+            manifest.metadata["homepage"] = j["homepage"].get<std::string>();
+        }
+        if (j.contains("repository")) {
+            manifest.metadata["repository"] = j["repository"].get<std::string>();
+        }
+        if (j.contains("minimum_netlogai_version")) {
+            manifest.metadata["minimum_netlogai_version"] = j["minimum_netlogai_version"].get<std::string>();
+        }
+
+        // Parse supported devices
+        if (j.contains("supported_devices") && j["supported_devices"].is_array()) {
+            std::string devices = "";
+            for (const auto& device : j["supported_devices"]) {
+                if (device.is_string()) {
+                    if (!devices.empty()) devices += ",";
+                    devices += device.get<std::string>();
+                }
+            }
+            manifest.metadata["supported_devices"] = devices;
+        }
+
+        // Parse permissions
+        if (j.contains("permissions") && j["permissions"].is_object()) {
+            manifest.metadata["permissions"] = j["permissions"].dump();
+        }
+
+        // Parse configuration
+        if (j.contains("configuration") && j["configuration"].is_object()) {
+            manifest.config_schema = j["configuration"].dump();
+        }
+
+        // Final validation
+        if (!validate_parsed_manifest(manifest)) {
+            std::cerr << "Manifest validation failed: " << manifest_path << std::endl;
+            manifest = PluginManifest{}; // Reset to empty
         }
 
     } catch (const std::exception& e) {
@@ -580,5 +691,178 @@ PluginExecutionEnvironment::PluginExecutionEnvironment(const PluginContext& cont
 }
 
 PluginExecutionEnvironment::~PluginExecutionEnvironment() = default;
+
+// ============================================================================
+// Manifest Validation Implementation
+// ============================================================================
+
+bool PluginLoader::validate_manifest_schema(const nlohmann::json& manifest_json) {
+    // Validate required fields
+    const std::vector<std::string> required_fields = {
+        "name", "version", "api_version", "type", "entry_point", "author", "description"
+    };
+
+    for (const auto& field : required_fields) {
+        if (!manifest_json.contains(field)) {
+            std::cerr << "Missing required field: " << field << std::endl;
+            return false;
+        }
+    }
+
+    // Validate field types
+    if (!manifest_json["name"].is_string() || !validate_plugin_name(manifest_json["name"].get<std::string>())) {
+        std::cerr << "Invalid plugin name format" << std::endl;
+        return false;
+    }
+
+    if (!manifest_json["version"].is_string() || !validate_version_format(manifest_json["version"].get<std::string>())) {
+        std::cerr << "Invalid version format" << std::endl;
+        return false;
+    }
+
+    if (!manifest_json["api_version"].is_string()) {
+        std::cerr << "Invalid api_version format" << std::endl;
+        return false;
+    }
+
+    if (!manifest_json["type"].is_string()) {
+        std::cerr << "Invalid type format" << std::endl;
+        return false;
+    }
+
+    // Validate plugin type
+    const std::vector<std::string> valid_types = {
+        "security", "performance", "topology", "parser", "analytics", "visualization", "integration"
+    };
+    std::string type = manifest_json["type"];
+    if (std::find(valid_types.begin(), valid_types.end(), type) == valid_types.end()) {
+        std::cerr << "Invalid plugin type: " << type << std::endl;
+        return false;
+    }
+
+    if (!manifest_json["entry_point"].is_string()) {
+        std::cerr << "Invalid entry_point format" << std::endl;
+        return false;
+    }
+
+    if (!manifest_json["description"].is_string() || manifest_json["description"].get<std::string>().length() < 10) {
+        std::cerr << "Description too short (minimum 10 characters)" << std::endl;
+        return false;
+    }
+
+    // Validate optional arrays
+    if (manifest_json.contains("capabilities") && !manifest_json["capabilities"].is_array()) {
+        std::cerr << "Invalid capabilities format (must be array)" << std::endl;
+        return false;
+    }
+
+    if (manifest_json.contains("dependencies") && !manifest_json["dependencies"].is_array()) {
+        std::cerr << "Invalid dependencies format (must be array)" << std::endl;
+        return false;
+    }
+
+    if (manifest_json.contains("supported_devices") && !manifest_json["supported_devices"].is_array()) {
+        std::cerr << "Invalid supported_devices format (must be array)" << std::endl;
+        return false;
+    }
+
+    // Validate optional objects
+    if (manifest_json.contains("configuration") && !manifest_json["configuration"].is_object()) {
+        std::cerr << "Invalid configuration format (must be object)" << std::endl;
+        return false;
+    }
+
+    if (manifest_json.contains("permissions") && !manifest_json["permissions"].is_object()) {
+        std::cerr << "Invalid permissions format (must be object)" << std::endl;
+        return false;
+    }
+
+    if (manifest_json.contains("metadata") && !manifest_json["metadata"].is_object()) {
+        std::cerr << "Invalid metadata format (must be object)" << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
+bool PluginLoader::validate_parsed_manifest(const PluginManifest& manifest) {
+    // Validate basic fields
+    if (manifest.name.empty()) {
+        std::cerr << "Plugin name cannot be empty" << std::endl;
+        return false;
+    }
+
+    if (manifest.version.empty()) {
+        std::cerr << "Plugin version cannot be empty" << std::endl;
+        return false;
+    }
+
+    if (manifest.api_version.empty()) {
+        std::cerr << "API version cannot be empty" << std::endl;
+        return false;
+    }
+
+    if (manifest.plugin_type.empty()) {
+        std::cerr << "Plugin type cannot be empty" << std::endl;
+        return false;
+    }
+
+    if (manifest.entry_point.empty()) {
+        std::cerr << "Entry point cannot be empty" << std::endl;
+        return false;
+    }
+
+    if (manifest.author.empty()) {
+        std::cerr << "Author cannot be empty" << std::endl;
+        return false;
+    }
+
+    if (manifest.description.empty()) {
+        std::cerr << "Description cannot be empty" << std::endl;
+        return false;
+    }
+
+    // Validate API version compatibility
+    if (manifest.api_version != "1.0") {
+        std::cerr << "Unsupported API version: " << manifest.api_version
+                  << " (expected: 1.0)" << std::endl;
+        return false;
+    }
+
+    // Validate entry point file extension
+    std::string entry_point = manifest.entry_point;
+    bool valid_extension = false;
+#ifdef _WIN32
+    valid_extension = (entry_point.length() > 4 &&
+                      entry_point.substr(entry_point.length() - 4) == ".dll");
+#else
+    valid_extension = (entry_point.length() > 3 &&
+                      entry_point.substr(entry_point.length() - 3) == ".so");
+#endif
+
+    if (!valid_extension) {
+        std::cerr << "Invalid entry point file extension" << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
+bool PluginLoader::validate_version_format(const std::string& version) {
+    // Basic semantic version validation (major.minor.patch)
+    std::regex version_regex(R"(^\d+\.\d+\.\d+(-[a-zA-Z0-9]+)?$)");
+    return std::regex_match(version, version_regex);
+}
+
+bool PluginLoader::validate_plugin_name(const std::string& name) {
+    // Plugin name validation: lowercase, alphanumeric, hyphens, underscores
+    // Length: 3-50 characters
+    if (name.length() < 3 || name.length() > 50) {
+        return false;
+    }
+
+    std::regex name_regex(R"(^[a-z0-9_-]+$)");
+    return std::regex_match(name, name_regex);
+}
 
 } // namespace netlogai::plugins

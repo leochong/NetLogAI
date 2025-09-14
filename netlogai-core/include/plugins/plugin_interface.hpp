@@ -182,7 +182,7 @@ public:
 };
 
 // Plugin factory function signature
-typedef std::unique_ptr<INetLogAIPlugin> (*CreatePluginFunc)();
+typedef INetLogAIPlugin* (*CreatePluginFunc)();
 typedef void (*DestroyPluginFunc)(INetLogAIPlugin*);
 
 // Plugin manifest structure (for plugin.json files)
