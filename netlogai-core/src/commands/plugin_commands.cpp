@@ -19,6 +19,8 @@ void PluginCommands::register_commands(cli::CommandLine& cli) {
     }, "Plugin management and execution");
 
     cli.register_subcommand("plugin", "list", list_plugins, "List available plugins");
+    cli.register_subcommand("plugin", "install", install_plugin, "Install a plugin from file");
+    cli.register_subcommand("plugin", "uninstall", uninstall_plugin, "Uninstall a plugin");
     cli.register_subcommand("plugin", "load", load_plugin, "Load a plugin");
     cli.register_subcommand("plugin", "unload", unload_plugin, "Unload a plugin");
     cli.register_subcommand("plugin", "enable", enable_plugin, "Enable a plugin");
@@ -27,6 +29,8 @@ void PluginCommands::register_commands(cli::CommandLine& cli) {
     cli.register_subcommand("plugin", "status", plugin_status, "Show plugin status");
     cli.register_subcommand("plugin", "config", plugin_config, "Configure plugin settings");
     cli.register_subcommand("plugin", "exec", execute_plugin_command, "Execute plugin command");
+    cli.register_subcommand("plugin", "test", test_plugin, "Test a plugin");
+    cli.register_subcommand("plugin", "validate", validate_plugin, "Validate plugin compliance");
 
     // Specialized plugin commands
     cli.register_command("security", [](const cli::CommandArgs& args) {
@@ -492,6 +496,8 @@ void PluginCommands::show_plugin_help() {
 
     std::cout << "Plugin Management:\n";
     std::cout << "  plugin list [--loaded|--active]  List available plugins\n";
+    std::cout << "  plugin install <path> [--verify] Install a plugin from file\n";
+    std::cout << "  plugin uninstall <name>          Uninstall a plugin\n";
     std::cout << "  plugin load <path>               Load a plugin from file\n";
     std::cout << "  plugin unload <name>             Unload a plugin\n";
     std::cout << "  plugin enable <name>             Enable a plugin\n";
@@ -499,7 +505,9 @@ void PluginCommands::show_plugin_help() {
     std::cout << "  plugin info <name>               Show plugin information\n";
     std::cout << "  plugin status [name]             Show plugin status\n";
     std::cout << "  plugin config <name> <key> [val] Get/set plugin configuration\n";
-    std::cout << "  plugin exec <name> <cmd> [args]  Execute plugin command\n\n";
+    std::cout << "  plugin exec <name> <cmd> [args]  Execute plugin command\n";
+    std::cout << "  plugin test <name|path>          Test plugin functionality\n";
+    std::cout << "  plugin validate <path>           Validate plugin compliance\n\n";
 
     std::cout << "Specialized Plugin Commands:\n";
     std::cout << "  security [--reset]               Run security analysis\n";
@@ -512,6 +520,276 @@ void PluginCommands::show_plugin_help() {
     std::cout << "  netlogai security\n";
     std::cout << "  netlogai perf --device Router1\n";
     std::cout << "  netlogai topology --diagram\n";
+}
+
+// New plugin management functions
+int PluginCommands::install_plugin(const cli::CommandArgs& args) {
+    if (args.args.empty()) {
+        std::cerr << "Error: Plugin path required\n";
+        std::cerr << "Usage: netlogai plugin install <path> [--verify]\n";
+        return 1;
+    }
+
+    std::string plugin_path = args.args[0];
+    bool verify = args.has_flag("verify");
+
+    std::cout << "Installing plugin: " << plugin_path << std::endl;
+
+    if (verify) {
+        std::cout << "Running security verification...\n";
+
+        // Use the testing framework to validate the plugin
+        testing::PluginValidator validator;
+        auto report = validator.validate_plugin(plugin_path, testing::PluginValidator::ValidationLevel::STRICT);
+
+        if (!report.is_valid) {
+            std::cerr << "Plugin validation failed:\n";
+            for (const auto& issue : report.compliance_issues) {
+                std::cerr << "  - " << issue << "\n";
+            }
+            for (const auto& warning : report.security_warnings) {
+                std::cerr << "  - SECURITY: " << warning << "\n";
+            }
+            return 1;
+        }
+
+        std::cout << "Plugin validation passed (score: " << report.overall_score << "/100)\n";
+    }
+
+    // Load the plugin to verify it works
+    if (!plugin_manager_) {
+        std::cerr << "Error: Plugin manager not initialized\n";
+        return 1;
+    }
+
+    try {
+        // Check if plugin file exists
+        if (!std::filesystem::exists(plugin_path)) {
+            std::cerr << "Error: Plugin file not found: " << plugin_path << std::endl;
+            return 1;
+        }
+
+        // Determine installation directory (third-party vs official)
+        std::string install_dir = verify ? "plugins" : "third-party/plugins";
+
+        // Extract plugin name from path
+        std::filesystem::path path_obj(plugin_path);
+        std::string plugin_name = path_obj.stem().string();
+
+        // Create target directory
+        std::string target_dir = install_dir + "/" + plugin_name;
+        std::filesystem::create_directories(target_dir);
+
+        // Copy plugin file
+        std::string target_path = target_dir + "/" + path_obj.filename().string();
+        std::filesystem::copy_file(plugin_path, target_path, std::filesystem::copy_options::overwrite_existing);
+
+        // Copy plugin manifest if it exists
+        std::string manifest_source = path_obj.parent_path().string() + "/plugin.json";
+        if (std::filesystem::exists(manifest_source)) {
+            std::string manifest_target = target_dir + "/plugin.json";
+            std::filesystem::copy_file(manifest_source, manifest_target, std::filesystem::copy_options::overwrite_existing);
+        }
+
+        // Try to load the plugin to verify installation
+        if (plugin_manager_->load_plugin(target_path)) {
+            std::cout << "Plugin installed successfully: " << plugin_name << std::endl;
+            std::cout << "Installation location: " << target_dir << std::endl;
+            return 0;
+        } else {
+            std::cerr << "Error: Failed to load installed plugin\n";
+            // Clean up on failure
+            std::filesystem::remove_all(target_dir);
+            return 1;
+        }
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error installing plugin: " << e.what() << std::endl;
+        return 1;
+    }
+}
+
+int PluginCommands::uninstall_plugin(const cli::CommandArgs& args) {
+    if (args.args.empty()) {
+        std::cerr << "Error: Plugin name required\n";
+        std::cerr << "Usage: netlogai plugin uninstall <name>\n";
+        return 1;
+    }
+
+    std::string plugin_name = args.args[0];
+    std::cout << "Uninstalling plugin: " << plugin_name << std::endl;
+
+    if (!plugin_manager_) {
+        std::cerr << "Error: Plugin manager not initialized\n";
+        return 1;
+    }
+
+    try {
+        // First unload the plugin if it's loaded
+        plugin_manager_->unload_plugin(plugin_name);
+
+        // Find and remove plugin directory
+        std::vector<std::string> search_dirs = {"plugins/" + plugin_name, "third-party/plugins/" + plugin_name};
+
+        bool found = false;
+        for (const auto& dir : search_dirs) {
+            if (std::filesystem::exists(dir)) {
+                std::filesystem::remove_all(dir);
+                std::cout << "Removed plugin directory: " << dir << std::endl;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            std::cerr << "Error: Plugin not found: " << plugin_name << std::endl;
+            return 1;
+        }
+
+        std::cout << "Plugin uninstalled successfully: " << plugin_name << std::endl;
+        return 0;
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error uninstalling plugin: " << e.what() << std::endl;
+        return 1;
+    }
+}
+
+int PluginCommands::test_plugin(const cli::CommandArgs& args) {
+    if (args.args.empty()) {
+        std::cerr << "Error: Plugin name or path required\n";
+        std::cerr << "Usage: netlogai plugin test <name|path>\n";
+        return 1;
+    }
+
+    std::string plugin_arg = args.args[0];
+    std::cout << "Testing plugin: " << plugin_arg << std::endl;
+
+    try {
+        testing::PluginTestHarness test_harness;
+        test_harness.setup_test_environment();
+
+        // Determine if it's a path or name
+        std::string plugin_path = plugin_arg;
+        if (!std::filesystem::exists(plugin_arg)) {
+            // Try to find by name in known directories
+            std::vector<std::string> search_paths = {
+                "plugins/" + plugin_arg + "/" + plugin_arg + ".dll",
+                "third-party/plugins/" + plugin_arg + "/" + plugin_arg + ".dll",
+                "build/plugins/" + plugin_arg + "/" + plugin_arg + ".dll"
+            };
+
+            bool found = false;
+            for (const auto& path : search_paths) {
+                if (std::filesystem::exists(path)) {
+                    plugin_path = path;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                std::cerr << "Error: Plugin not found: " << plugin_arg << std::endl;
+                return 1;
+            }
+        }
+
+        if (test_harness.load_plugin_for_testing(plugin_path)) {
+            auto results = test_harness.run_comprehensive_tests();
+
+            // Display results
+            std::cout << "\n=== Test Results ===\n";
+            int passed = 0, failed = 0;
+            for (const auto& result : results) {
+                std::cout << result.test_name << ": " << (result.passed ? "PASSED" : "FAILED") << "\n";
+                if (!result.message.empty()) {
+                    std::cout << "  " << result.message << "\n";
+                }
+                for (const auto& warning : result.warnings) {
+                    std::cout << "  WARNING: " << warning << "\n";
+                }
+                for (const auto& error : result.errors) {
+                    std::cout << "  ERROR: " << error << "\n";
+                }
+
+                if (result.passed) passed++;
+                else failed++;
+            }
+
+            std::cout << "\nSummary: " << passed << " passed, " << failed << " failed\n";
+
+            // Generate detailed report
+            test_harness.generate_test_report(plugin_arg, results);
+
+            test_harness.cleanup_test_environment();
+            return failed == 0 ? 0 : 1;
+        } else {
+            std::cerr << "Error: Failed to load plugin for testing\n";
+            test_harness.cleanup_test_environment();
+            return 1;
+        }
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error testing plugin: " << e.what() << std::endl;
+        return 1;
+    }
+}
+
+int PluginCommands::validate_plugin(const cli::CommandArgs& args) {
+    if (args.args.empty()) {
+        std::cerr << "Error: Plugin path required\n";
+        std::cerr << "Usage: netlogai plugin validate <path> [--level=basic|standard|strict]\n";
+        return 1;
+    }
+
+    std::string plugin_path = args.args[0];
+    std::string level_str = args.get_option("level", "standard");
+
+    testing::PluginValidator::ValidationLevel level = testing::PluginValidator::ValidationLevel::STANDARD;
+    if (level_str == "basic") {
+        level = testing::PluginValidator::ValidationLevel::BASIC;
+    } else if (level_str == "strict") {
+        level = testing::PluginValidator::ValidationLevel::STRICT;
+    }
+
+    std::cout << "Validating plugin: " << plugin_path << std::endl;
+    std::cout << "Validation level: " << level_str << std::endl;
+
+    try {
+        testing::PluginValidator validator;
+        auto report = validator.validate_plugin(plugin_path, level);
+
+        std::cout << "\n=== Validation Results ===\n";
+        std::cout << "Status: " << (report.is_valid ? "VALID" : "INVALID") << "\n";
+        std::cout << "Overall Score: " << report.overall_score << "/100\n";
+
+        if (!report.compliance_issues.empty()) {
+            std::cout << "\nCompliance Issues:\n";
+            for (const auto& issue : report.compliance_issues) {
+                std::cout << "  - " << issue << "\n";
+            }
+        }
+
+        if (!report.security_warnings.empty()) {
+            std::cout << "\nSecurity Warnings:\n";
+            for (const auto& warning : report.security_warnings) {
+                std::cout << "  - " << warning << "\n";
+            }
+        }
+
+        if (!report.performance_issues.empty()) {
+            std::cout << "\nPerformance Issues:\n";
+            for (const auto& issue : report.performance_issues) {
+                std::cout << "  - " << issue << "\n";
+            }
+        }
+
+        return report.is_valid ? 0 : 1;
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error validating plugin: " << e.what() << std::endl;
+        return 1;
+    }
 }
 
 } // namespace netlogai::commands

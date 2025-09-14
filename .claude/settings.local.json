@@ -68,7 +68,15 @@
       "Bash(./build/Release/netlogai.exe ask \"Test question to verify HTTP client\")",
       "Bash(./build/Release/netlogai.exe log --help)",
       "Bash(./build/Release/netlogai.exe timeline --help)",
-      "Bash(./build/Release/netlogai.exe analyze --pattern \"interface_down\")"
+      "Bash(./build/Release/netlogai.exe analyze --pattern \"interface_down\")",
+      "Bash(./build/Release/netlogai.exe --version)",
+      "Bash(./build/Release/netlogai.exe parser list)",
+      "Bash(./build/Release/netlogai.exe plugin --help)",
+      "Bash(./build/Release/netlogai.exe plugin list)",
+      "Bash(./build/Release/netlogai.exe plugin install test_plugin.dll)",
+      "Bash(./build/Release/netlogai.exe plugin validate test_plugin.dll)",
+      "Bash(./build/Release/netlogai.exe plugin test test_plugin.dll)",
+      "Bash(./build/Release/netlogai.exe plugin status)"
     ],
     "deny": [],
     "ask": []

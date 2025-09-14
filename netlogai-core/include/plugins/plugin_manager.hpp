@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <atomic>
 #include <functional>
+#include <queue>
 
 namespace netlogai::plugins {
 

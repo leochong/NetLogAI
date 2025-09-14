@@ -86,6 +86,12 @@ file(GLOB_RECURSE PLUGIN_SOURCES
     "src/plugins/*.hpp"
 )
 
+# Testing framework sources
+file(GLOB_RECURSE TESTING_SOURCES
+    "src/testing/*.cpp"
+    "src/testing/*.hpp"
+)
+
 file(GLOB_RECURSE COMMON_SOURCES
     "src/common/*.cpp"
     "src/common/*.hpp"
@@ -102,7 +108,7 @@ file(GLOB COMMANDS_SOURCES
     "src/commands/*.hpp"
 )
 
-# Main executable
+# Main executable (exclude testing sources to avoid conflicts)
 add_executable(netlogai
     src/main.cpp
     ${CLI_SOURCES}
@@ -111,6 +117,7 @@ add_executable(netlogai
     ${ANALYTICS_SOURCES}
     ${PLUGIN_SOURCES}
     ${COMMON_SOURCES}
+    src/testing/plugin_test_framework.cpp
 )
 
 # Link libraries
@@ -237,3 +244,152 @@ if(WIN32)
 endif()
 
 include(CPack)
+
+# ============================================================================
+# Plugin Build System
+# ============================================================================
+
+# Option to build example plugins
+option(BUILD_EXAMPLE_PLUGINS "Build example plugins" OFF)
+
+if(BUILD_EXAMPLE_PLUGINS)
+    message(STATUS "Building example plugins")
+
+    # Function to create a plugin target
+    function(add_netlogai_plugin PLUGIN_NAME PLUGIN_SOURCES)
+        # Create shared library for the plugin
+        add_library(${PLUGIN_NAME} SHARED ${PLUGIN_SOURCES})
+
+        # Set plugin properties
+        set_target_properties(${PLUGIN_NAME} PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED ON
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/${PLUGIN_NAME}"
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/${PLUGIN_NAME}"
+            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/${PLUGIN_NAME}"
+        )
+
+        # Include plugin interface headers
+        target_include_directories(${PLUGIN_NAME} PRIVATE
+            ${CMAKE_SOURCE_DIR}/include
+            ${CMAKE_SOURCE_DIR}/third-party/libnetlog/include
+        )
+
+        # Link with required libraries
+        target_link_libraries(${PLUGIN_NAME} PRIVATE
+            nlohmann_json::nlohmann_json
+            spdlog::spdlog
+            fmt::fmt
+        )
+
+        # Windows-specific settings
+        if(WIN32)
+            target_compile_definitions(${PLUGIN_NAME} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+        endif()
+
+        # Copy plugin manifest to output directory
+        if(EXISTS "${CMAKE_SOURCE_DIR}/examples/plugins/${PLUGIN_NAME}/plugin.json")
+            configure_file(
+                "${CMAKE_SOURCE_DIR}/examples/plugins/${PLUGIN_NAME}/plugin.json"
+                "${CMAKE_BINARY_DIR}/plugins/${PLUGIN_NAME}/plugin.json"
+                COPYONLY
+            )
+        endif()
+
+        # Install plugin
+        install(TARGETS ${PLUGIN_NAME}
+            RUNTIME DESTINATION plugins/${PLUGIN_NAME}
+            LIBRARY DESTINATION plugins/${PLUGIN_NAME}
+            ARCHIVE DESTINATION plugins/${PLUGIN_NAME}
+        )
+
+        if(EXISTS "${CMAKE_SOURCE_DIR}/examples/plugins/${PLUGIN_NAME}/plugin.json")
+            install(FILES "${CMAKE_SOURCE_DIR}/examples/plugins/${PLUGIN_NAME}/plugin.json"
+                DESTINATION plugins/${PLUGIN_NAME}
+            )
+        endif()
+
+        message(STATUS "Added plugin target: ${PLUGIN_NAME}")
+    endfunction()
+
+    # Security Plugin
+    if(EXISTS "${CMAKE_SOURCE_DIR}/examples/plugins/security")
+        file(GLOB SECURITY_PLUGIN_SOURCES
+            "examples/plugins/security/*.cpp"
+            "examples/plugins/security/*.hpp"
+        )
+        add_netlogai_plugin(security_plugin "${SECURITY_PLUGIN_SOURCES}")
+    endif()
+
+    # Performance Plugin
+    if(EXISTS "${CMAKE_SOURCE_DIR}/examples/plugins/performance")
+        file(GLOB PERFORMANCE_PLUGIN_SOURCES
+            "examples/plugins/performance/*.cpp"
+            "examples/plugins/performance/*.hpp"
+        )
+        add_netlogai_plugin(performance_plugin "${PERFORMANCE_PLUGIN_SOURCES}")
+    endif()
+
+    # Topology Plugin
+    if(EXISTS "${CMAKE_SOURCE_DIR}/examples/plugins/topology")
+        file(GLOB TOPOLOGY_PLUGIN_SOURCES
+            "examples/plugins/topology/*.cpp"
+            "examples/plugins/topology/*.hpp"
+        )
+        add_netlogai_plugin(topology_plugin "${TOPOLOGY_PLUGIN_SOURCES}")
+    endif()
+
+    # Custom target to build all plugins
+    add_custom_target(build_all_plugins)
+    if(TARGET security_plugin)
+        add_dependencies(build_all_plugins security_plugin)
+    endif()
+    if(TARGET performance_plugin)
+        add_dependencies(build_all_plugins performance_plugin)
+    endif()
+    if(TARGET topology_plugin)
+        add_dependencies(build_all_plugins topology_plugin)
+    endif()
+
+endif()
+
+# ============================================================================
+# Plugin Testing Framework
+# ============================================================================
+
+option(BUILD_PLUGIN_TESTS "Build plugin testing framework" ON)
+
+if(BUILD_PLUGIN_TESTS)
+    message(STATUS "Building plugin testing framework")
+
+    # Plugin test executable (separate from main executable)
+    add_executable(plugin_tester
+        src/testing/test_main.cpp
+        src/testing/plugin_test_framework.cpp
+        ${PLUGIN_SOURCES}
+    )
+
+    target_include_directories(plugin_tester PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/third-party/libnetlog/include
+    )
+
+    target_link_libraries(plugin_tester PRIVATE
+        nlohmann_json::nlohmann_json
+        spdlog::spdlog
+        fmt::fmt
+    )
+
+    if(WIN32)
+        target_compile_definitions(plugin_tester PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+        target_link_libraries(plugin_tester PRIVATE ws2_32 advapi32)
+    endif()
+
+    # Custom target for running plugin tests
+    add_custom_target(test_plugins
+        COMMAND plugin_tester --test-all
+        DEPENDS plugin_tester
+        COMMENT "Running plugin tests"
+    )
+
+endif()

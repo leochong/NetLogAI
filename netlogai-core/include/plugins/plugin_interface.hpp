@@ -141,7 +141,7 @@ public:
 
     // Optional interfaces (default implementations)
     virtual bool supports_real_time() const { return get_capabilities() & PluginCapability::REAL_TIME_MONITORING; }
-    virtual PluginResult process_real_time_entry(const LogEntry& entry) { return {false, "Real-time processing not supported", {}, {}, {}, {}, 0}; }
+    virtual PluginResult process_real_time_entry(const LogEntry& /* entry */) { return {false, "Real-time processing not supported", {}, {}, {}, {}, 0}; }
     virtual std::vector<std::string> get_supported_commands() const { return {}; }
     virtual std::map<std::string, std::string> get_configuration_schema() const { return {}; }
     virtual std::string get_status() const { return "unknown"; }

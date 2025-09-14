@@ -453,4 +453,132 @@ std::string PluginManager::get_plugin_status(const std::string& plugin_id) const
     return "loaded";
 }
 
+// Missing method implementations
+bool PluginManager::unload_plugin(const std::string& plugin_id) {
+    return loader_->unload_plugin(plugin_id);
+}
+
+bool PluginManager::enable_plugin(const std::string& plugin_id) {
+    auto* plugin = loader_->get_loaded_plugin(plugin_id);
+    if (!plugin) {
+        return false;
+    }
+    plugin->is_active = true;
+    return true;
+}
+
+bool PluginManager::disable_plugin(const std::string& plugin_id) {
+    auto* plugin = loader_->get_loaded_plugin(plugin_id);
+    if (!plugin) {
+        return false;
+    }
+    plugin->is_active = false;
+    return true;
+}
+
+std::vector<std::string> PluginManager::get_available_plugins() const {
+    return get_loaded_plugins(); // Simplified implementation
+}
+
+std::vector<std::string> PluginManager::get_active_plugins() const {
+    auto loaded_plugins = loader_->get_all_loaded_plugins();
+    std::vector<std::string> active_plugins;
+    for (const auto* plugin : loaded_plugins) {
+        if (plugin->is_active) {
+            active_plugins.push_back(plugin->manifest.name);
+        }
+    }
+    return active_plugins;
+}
+
+PluginResult PluginManager::execute_plugin_command(const std::string& plugin_id,
+                                                  const std::string& command,
+                                                  const std::map<std::string, std::string>& parameters) {
+    auto* plugin = loader_->get_loaded_plugin(plugin_id);
+    if (!plugin || !plugin->instance) {
+        return {false, "Plugin not found or not loaded", {}, {}, {}, {}, 0};
+    }
+
+    return plugin->instance->execute_command(command, parameters);
+}
+
+bool PluginManager::configure_plugin(const std::string& plugin_id,
+                                    const std::map<std::string, std::string>& config) {
+    auto* plugin = loader_->get_loaded_plugin(plugin_id);
+    if (!plugin || !plugin->instance) {
+        return false;
+    }
+
+    return plugin->instance->configure(config);
+}
+
+std::map<std::string, std::string> PluginManager::get_plugin_config(const std::string& plugin_id) const {
+    auto* plugin = loader_->get_loaded_plugin(plugin_id);
+    if (!plugin || !plugin->instance) {
+        return {};
+    }
+
+    return plugin->instance->get_configuration_schema();
+}
+
+void PluginManager::stop_real_time_processing() {
+    if (real_time_active_) {
+        real_time_active_ = false;
+        queue_cv_.notify_all();
+
+        if (real_time_thread_.joinable()) {
+            real_time_thread_.join();
+        }
+    }
+}
+
+// Missing PluginLoader method implementation
+std::vector<std::string> PluginLoader::scan_plugin_directory(const std::string& directory) {
+    std::vector<std::string> plugin_paths;
+
+    if (!std::filesystem::exists(directory)) {
+        return plugin_paths;
+    }
+
+    try {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(directory)) {
+            if (entry.is_regular_file()) {
+                auto path = entry.path();
+                auto extension = path.extension().string();
+
+                // Look for shared libraries
+#ifdef _WIN32
+                if (extension == ".dll") {
+#else
+                if (extension == ".so") {
+#endif
+                    // Check if there's a corresponding plugin.json
+                    auto manifest_path = path.parent_path() / "plugin.json";
+                    if (std::filesystem::exists(manifest_path)) {
+                        plugin_paths.push_back(path.string());
+                    }
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error scanning plugin directory: " << e.what() << std::endl;
+    }
+
+    return plugin_paths;
+}
+
+// Missing PluginExecutionEnvironment implementations
+PluginExecutionEnvironment::PluginExecutionEnvironment(const PluginContext& context)
+    : context_(context) {
+    if (context_.sandbox_enabled) {
+        PluginSandbox::SecurityPolicy policy;
+        policy.max_memory_mb = context_.max_memory_mb;
+        policy.max_execution_time_ms = context_.max_execution_time_ms;
+        sandbox_ = std::make_unique<PluginSandbox>(policy);
+        sandbox_->initialize();
+    }
+}
+
+PluginExecutionEnvironment::~PluginExecutionEnvironment() = default;
+
 } // namespace netlogai::plugins
