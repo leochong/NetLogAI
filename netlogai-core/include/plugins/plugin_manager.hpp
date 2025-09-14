@@ -11,6 +11,9 @@
 #include <functional>
 #include <queue>
 
+// Forward declarations
+#include <nlohmann/json_fwd.hpp>
+
 namespace netlogai::plugins {
 
 // Plugin security and sandboxing
@@ -79,6 +82,12 @@ private:
     void* load_dynamic_library(const std::string& path);
     void unload_dynamic_library(void* handle);
     bool extract_plugin_functions(void* handle, CreatePluginFunc& create, DestroyPluginFunc& destroy);
+
+    // Manifest validation helpers
+    bool validate_manifest_schema(const nlohmann::json& manifest_json);
+    bool validate_parsed_manifest(const PluginManifest& manifest);
+    bool validate_version_format(const std::string& version);
+    bool validate_plugin_name(const std::string& name);
 };
 
 // Plugin execution environment with resource monitoring
