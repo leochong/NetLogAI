@@ -4,6 +4,8 @@
 #include "commands/config_commands.hpp"
 #include "commands/device_commands.hpp"
 #include "commands/ai_commands.hpp"
+#include "commands/plugin_commands.hpp"
+#include "analytics/git_style_commands.hpp"
 #include <iostream>
 
 int main(int argc, char* argv[]) {
@@ -16,13 +18,10 @@ int main(int argc, char* argv[]) {
         netlogai::commands::ConfigCommands::register_commands(cli);
         netlogai::commands::DeviceCommands::register_commands(cli);
         netlogai::commands::AICommands::register_commands(cli);
+        netlogai::commands::PluginCommands::register_commands(cli);
 
-        // Register additional placeholder commands for future implementation
-        cli.register_command("analyze", [](const netlogai::cli::CommandArgs&) {
-            std::cout << "Advanced analysis not yet implemented.\n";
-            std::cout << "Coming soon: pattern detection and correlation analysis.\n";
-            return 0;
-        }, "Advanced log analysis and pattern detection");
+        // Register advanced analytics commands (git-style interface)
+        netlogai::analytics::GitStyleCommands::register_commands(cli);
         
         cli.register_command("status", [](const netlogai::cli::CommandArgs&) {
             std::cout << "NetLogAI System Status\n";

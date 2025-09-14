@@ -58,7 +58,17 @@
       "Bash(./netlogai.exe config ai)",
       "Bash(./netlogai.exe ask error \"%LINEPROTO-5-UPDOWN: gi0/1 down\" --device-type cisco-ios)",
       "Bash(./netlogai.exe ask fix \"High CPU usage on switches\")",
-      "Bash(./netlogai.exe ai-test)"
+      "Bash(./netlogai.exe ai-test)",
+      "Bash(./vcpkg/vcpkg:*)",
+      "Bash(timeout:*)",
+      "Bash(grep:*)",
+      "Bash(./build/Release/netlogai.exe config ai)",
+      "Bash(./build/Release/netlogai.exe ai-status)",
+      "Bash(./build/Release/netlogai.exe ai-test)",
+      "Bash(./build/Release/netlogai.exe ask \"Test question to verify HTTP client\")",
+      "Bash(./build/Release/netlogai.exe log --help)",
+      "Bash(./build/Release/netlogai.exe timeline --help)",
+      "Bash(./build/Release/netlogai.exe analyze --pattern \"interface_down\")"
     ],
     "deny": [],
     "ask": []

@@ -74,6 +74,18 @@ file(GLOB_RECURSE CORE_SOURCES
     "src/core/plugins/*.hpp"
 )
 
+# Analytics module sources
+file(GLOB_RECURSE ANALYTICS_SOURCES
+    "src/analytics/*.cpp"
+    "src/analytics/*.hpp"
+)
+
+# Plugin system sources
+file(GLOB_RECURSE PLUGIN_SOURCES
+    "src/plugins/*.cpp"
+    "src/plugins/*.hpp"
+)
+
 file(GLOB_RECURSE COMMON_SOURCES
     "src/common/*.cpp"
     "src/common/*.hpp"
@@ -96,6 +108,8 @@ add_executable(netlogai
     ${CLI_SOURCES}
     ${COMMANDS_SOURCES}
     ${CORE_SOURCES}
+    ${ANALYTICS_SOURCES}
+    ${PLUGIN_SOURCES}
     ${COMMON_SOURCES}
 )
 

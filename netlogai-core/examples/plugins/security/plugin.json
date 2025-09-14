@@ -1,0 +1,43 @@
+{
+  "name": "security_plugin",
+  "version": "1.0.0",
+  "description": "Network security analysis and threat detection plugin for NetLogAI",
+  "author": "NetLogAI Team",
+  "api_version": "1.0.0",
+  "plugin_type": "SECURITY",
+  "entry_point": "security_plugin.dll",
+  "capabilities": [
+    "LOG_ANALYSIS",
+    "REAL_TIME_MONITORING",
+    "ALERTING",
+    "CONFIGURATION"
+  ],
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "brute_force_threshold": {
+        "type": "integer",
+        "default": 5,
+        "description": "Number of failed login attempts to trigger brute force alert"
+      },
+      "auth_failure_window_minutes": {
+        "type": "integer",
+        "default": 15,
+        "description": "Time window in minutes for authentication failure analysis"
+      },
+      "suspicious_activity_threshold": {
+        "type": "integer",
+        "default": 10,
+        "description": "Threshold for suspicious activity detection"
+      }
+    }
+  },
+  "dependencies": [],
+  "metadata": {
+    "category": "Security",
+    "tags": ["threat-detection", "authentication", "network-security"],
+    "license": "Commercial",
+    "documentation_url": "https://docs.netlogai.com/plugins/security",
+    "support_contact": "support@netlogai.com"
+  }
+}

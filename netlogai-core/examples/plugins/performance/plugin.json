@@ -1,0 +1,53 @@
+{
+  "name": "performance_plugin",
+  "version": "1.0.0",
+  "description": "Network performance monitoring and bandwidth analysis plugin for NetLogAI",
+  "author": "NetLogAI Team",
+  "api_version": "1.0.0",
+  "plugin_type": "PERFORMANCE",
+  "entry_point": "performance_plugin.dll",
+  "capabilities": [
+    "LOG_ANALYSIS",
+    "REAL_TIME_MONITORING",
+    "ALERTING",
+    "CONFIGURATION"
+  ],
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "cpu_threshold": {
+        "type": "number",
+        "default": 80.0,
+        "description": "CPU utilization threshold percentage for alerts"
+      },
+      "memory_threshold": {
+        "type": "number",
+        "default": 85.0,
+        "description": "Memory utilization threshold percentage for alerts"
+      },
+      "interface_utilization_threshold": {
+        "type": "number",
+        "default": 90.0,
+        "description": "Interface utilization threshold percentage for alerts"
+      },
+      "latency_threshold": {
+        "type": "number",
+        "default": 100.0,
+        "description": "Latency threshold in milliseconds for alerts"
+      },
+      "analysis_window_minutes": {
+        "type": "integer",
+        "default": 30,
+        "description": "Analysis window in minutes for performance metrics"
+      }
+    }
+  },
+  "dependencies": [],
+  "metadata": {
+    "category": "Performance",
+    "tags": ["performance", "bandwidth", "monitoring", "alerts"],
+    "license": "Commercial",
+    "documentation_url": "https://docs.netlogai.com/plugins/performance",
+    "support_contact": "support@netlogai.com"
+  }
+}

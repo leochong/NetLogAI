@@ -1,0 +1,43 @@
+{
+  "name": "topology_plugin",
+  "version": "1.0.0",
+  "description": "Network topology discovery and mapping plugin for NetLogAI",
+  "author": "NetLogAI Team",
+  "api_version": "1.0.0",
+  "plugin_type": "TOPOLOGY",
+  "entry_point": "topology_plugin.dll",
+  "capabilities": [
+    "LOG_ANALYSIS",
+    "DEVICE_INTERACTION",
+    "VISUALIZATION",
+    "CONFIGURATION"
+  ],
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "device_timeout_minutes": {
+        "type": "integer",
+        "default": 30,
+        "description": "Timeout in minutes for device activity tracking"
+      },
+      "auto_discovery": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable automatic network device discovery"
+      },
+      "passive_discovery": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable passive device discovery from log analysis"
+      }
+    }
+  },
+  "dependencies": [],
+  "metadata": {
+    "category": "Topology",
+    "tags": ["topology", "discovery", "mapping", "visualization", "network-graph"],
+    "license": "Commercial",
+    "documentation_url": "https://docs.netlogai.com/plugins/topology",
+    "support_contact": "support@netlogai.com"
+  }
+}
