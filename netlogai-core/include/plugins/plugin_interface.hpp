@@ -204,18 +204,18 @@ struct PluginManifest {
 
 // C-style plugin export macros for cross-platform compatibility
 #ifdef _WIN32
-    #define NETLOGAI_PLUGIN_EXPORT extern "C" __declspec(dllexport)
+    #define NETLOGAI_PLUGIN_EXPORT __declspec(dllexport)
 #else
-    #define NETLOGAI_PLUGIN_EXPORT extern "C" __attribute__((visibility("default")))
+    #define NETLOGAI_PLUGIN_EXPORT __attribute__((visibility("default")))
 #endif
 
 // Macros to simplify plugin creation
 #define NETLOGAI_PLUGIN_CREATE(PluginClass) \
-    NETLOGAI_PLUGIN_EXPORT std::unique_ptr<netlogai::plugins::INetLogAIPlugin> create_plugin() { \
-        return std::make_unique<PluginClass>(); \
+    extern "C" NETLOGAI_PLUGIN_EXPORT netlogai::plugins::INetLogAIPlugin* create_plugin() { \
+        return new PluginClass(); \
     }
 
 #define NETLOGAI_PLUGIN_DESTROY() \
-    NETLOGAI_PLUGIN_EXPORT void destroy_plugin(netlogai::plugins::INetLogAIPlugin* plugin) { \
+    extern "C" NETLOGAI_PLUGIN_EXPORT void destroy_plugin(netlogai::plugins::INetLogAIPlugin* plugin) { \
         delete plugin; \
     }

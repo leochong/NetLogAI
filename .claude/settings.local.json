@@ -76,7 +76,9 @@
       "Bash(./build/Release/netlogai.exe plugin install test_plugin.dll)",
       "Bash(./build/Release/netlogai.exe plugin validate test_plugin.dll)",
       "Bash(./build/Release/netlogai.exe plugin test test_plugin.dll)",
-      "Bash(./build/Release/netlogai.exe plugin status)"
+      "Bash(./build/Release/netlogai.exe plugin status)",
+      "Bash(find:*)",
+      "Read(//c/**)"
     ],
     "deny": [],
     "ask": []

@@ -250,7 +250,7 @@ include(CPack)
 # ============================================================================
 
 # Option to build example plugins
-option(BUILD_EXAMPLE_PLUGINS "Build example plugins" OFF)
+option(BUILD_EXAMPLE_PLUGINS "Build example plugins" ON)
 
 if(BUILD_EXAMPLE_PLUGINS)
     message(STATUS "Building example plugins")

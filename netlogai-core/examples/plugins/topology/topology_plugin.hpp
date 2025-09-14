@@ -157,6 +157,9 @@ private:
     std::string format_node_label(const TopologyNode& node) const;
     std::string format_connection_label(const NetworkConnection& connection) const;
 
+    // Helper functions
+    std::string extract_subnet_from_ip(const std::string& ip_address);
+
     // Maintenance
     void cleanup_stale_devices();
     void cleanup_stale_connections();

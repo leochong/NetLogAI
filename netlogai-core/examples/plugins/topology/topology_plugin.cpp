@@ -371,7 +371,7 @@ void TopologyPlugin::parse_routing_table(const LogEntry& entry) {
     );
 
     std::smatch match;
-    if (std::regex_search(entry.message, match, match_regex)) {
+    if (std::regex_search(entry.message, match, route_regex)) {
         std::string destination = match[1];
         std::string next_hop = match[2];
         std::string interface = match[3];
@@ -413,7 +413,7 @@ void TopologyPlugin::parse_interface_status(const LogEntry& entry) {
     }
 }
 
-NetworkConnection TopologyPlugin::create_connection(
+TopologyPlugin::NetworkConnection TopologyPlugin::create_connection(
     const std::string& source_device,
     const std::string& source_interface,
     const std::string& dest_device,
@@ -818,6 +818,56 @@ std::string TopologyPlugin::get_status() const {
     if (!is_initialized_) return "not_initialized";
     if (!is_running_) return "stopped";
     return "running";
+}
+
+void TopologyPlugin::group_devices_by_subnet() {
+    // Group network devices by their subnet/VLAN membership
+    // This is a basic implementation that analyzes IP addresses
+
+    for (const auto& [device_id, topology_node] : topology_map_.nodes) {
+        const auto& device = topology_node.device;
+        std::string subnet = extract_subnet_from_ip(device.management_ip);
+
+        // Find or create subnet group
+        NetworkSubnet* subnet_info = nullptr;
+        for (auto& subnet_entry : topology_map_.subnets) {
+            if (subnet_entry.network_address == subnet) {
+                subnet_info = &subnet_entry;
+                break;
+            }
+        }
+
+        if (!subnet_info) {
+            NetworkSubnet new_subnet;
+            new_subnet.network_address = subnet;
+            new_subnet.prefix_length = 24; // Default /24 assumption
+            new_subnet.vlan_id = "0"; // Default VLAN
+            topology_map_.subnets.push_back(new_subnet);
+            subnet_info = &topology_map_.subnets.back();
+        }
+
+        // Add device to subnet if not already present
+        bool device_exists = false;
+        for (const auto& existing_device_id : subnet_info->devices) {
+            if (existing_device_id == device.name) {
+                device_exists = true;
+                break;
+            }
+        }
+
+        if (!device_exists) {
+            subnet_info->devices.push_back(device.name);
+        }
+    }
+}
+
+std::string TopologyPlugin::extract_subnet_from_ip(const std::string& ip_address) {
+    // Simple subnet extraction - assumes /24 networks
+    size_t last_dot = ip_address.find_last_of('.');
+    if (last_dot != std::string::npos) {
+        return ip_address.substr(0, last_dot) + ".0";
+    }
+    return ip_address; // Return as-is if parsing fails
 }
 
 } // namespace netlogai::plugins::examples
