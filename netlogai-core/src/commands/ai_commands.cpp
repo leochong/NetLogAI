@@ -7,6 +7,10 @@
 #include <nlohmann/json.hpp>
 #include <cstdlib>
 
+#ifdef ENABLE_AI_INTEGRATION
+#include <curl/curl.h>
+#endif
+
 using json = nlohmann::json;
 
 namespace netlogai::commands {
@@ -346,12 +350,115 @@ int AICommands::test_ai_connection(const cli::CommandArgs& args) {
     }
 }
 
+// HTTP Response callback for libcurl
+struct HTTPResponse {
+    std::string data;
+};
+
+static size_t WriteCallback(void* contents, size_t size, size_t nmemb, HTTPResponse* response) {
+    size_t totalSize = size * nmemb;
+    response->data.append((char*)contents, totalSize);
+    return totalSize;
+}
+
 // Helper function implementations
 std::string AICommands::call_claude_api(const std::string& prompt, const std::vector<std::string>& context_logs) {
-    // This is a placeholder implementation for the Claude API call
-    // In a production environment, you would implement actual HTTP client functionality
+#ifdef ENABLE_AI_INTEGRATION
+    // Real Claude API integration
+    std::cout << "📡 Calling Claude API...\n";
+    std::cout << "Prompt preview: " << prompt.substr(0, 100) << "...\n";
 
-    std::cout << "📡 [Simulated] Calling Claude API...\n";
+    if (!context_logs.empty()) {
+        std::cout << "Context: " << context_logs.size() << " log entries\n";
+    }
+
+    // Build JSON request payload
+    json request_payload;
+    request_payload["model"] = ai_config.model;
+    request_payload["max_tokens"] = ai_config.max_tokens;
+    request_payload["temperature"] = ai_config.temperature;
+    request_payload["messages"] = json::array();
+    request_payload["messages"].push_back({
+        {"role", "user"},
+        {"content", prompt}
+    });
+
+    std::string json_payload = request_payload.dump();
+
+    // Initialize libcurl
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        std::cerr << "❌ Failed to initialize HTTP client\n";
+        return "Error: Failed to initialize HTTP client for AI request.";
+    }
+
+    HTTPResponse response;
+    struct curl_slist* headers = nullptr;
+
+    // Set headers
+    std::string auth_header = "x-api-key: " + ai_config.api_key;
+    std::string content_type = "content-type: application/json";
+    std::string anthropic_version = "anthropic-version: 2023-06-01";
+
+    headers = curl_slist_append(headers, auth_header.c_str());
+    headers = curl_slist_append(headers, content_type.c_str());
+    headers = curl_slist_append(headers, anthropic_version.c_str());
+
+    // Configure curl
+    curl_easy_setopt(curl, CURLOPT_URL, ai_config.base_url.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_payload.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, json_payload.length());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, static_cast<long>(ai_config.timeout_seconds));
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+
+    // Perform the request
+    CURLcode res = curl_easy_perform(curl);
+    long response_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+
+    // Cleanup
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    if (res != CURLE_OK) {
+        std::cerr << "❌ HTTP request failed: " << curl_easy_strerror(res) << "\n";
+        return "Error: Failed to connect to Claude API. Please check your network connection and API key.";
+    }
+
+    if (response_code != 200) {
+        std::cerr << "❌ API request failed with status: " << response_code << "\n";
+        std::cerr << "Response: " << response.data << "\n";
+        return "Error: Claude API returned status " + std::to_string(response_code) + ". Please check your API key and quota.";
+    }
+
+    // Parse JSON response
+    try {
+        json json_response = json::parse(response.data);
+
+        if (json_response.contains("content") && json_response["content"].is_array() && !json_response["content"].empty()) {
+            if (json_response["content"][0].contains("text")) {
+                return json_response["content"][0]["text"].get<std::string>();
+            }
+        }
+
+        // If we can't find the expected structure, return the error
+        std::cerr << "❌ Unexpected API response format\n";
+        std::cerr << "Response: " << response.data << "\n";
+        return "Error: Unexpected response format from Claude API.";
+
+    } catch (const json::exception& e) {
+        std::cerr << "❌ Failed to parse API response: " << e.what() << "\n";
+        std::cerr << "Response: " << response.data << "\n";
+        return "Error: Failed to parse response from Claude API.";
+    }
+
+#else
+    // Fallback to simulated response if AI integration is not enabled
+    std::cout << "📡 [Simulated] Calling Claude API (AI integration not compiled)...\n";
     std::cout << "Prompt preview: " << prompt.substr(0, 100) << "...\n";
 
     if (!context_logs.empty()) {
@@ -368,7 +475,8 @@ std::string AICommands::call_claude_api(const std::string& prompt, const std::ve
                "- Check physical connectivity and interface status\n"
                "- Verify BGP configuration consistency between peers\n"
                "- Monitor system resources on both devices\n"
-               "- Consider adjusting BGP timers if network has high latency";
+               "- Consider adjusting BGP timers if network has high latency\n\n"
+               "Note: This is a simulated response. Enable AI integration to get real Claude analysis.";
     }
 
     if (prompt.find("error") != std::string::npos || prompt.find("ERROR") != std::string::npos) {
@@ -386,25 +494,8 @@ std::string AICommands::call_claude_api(const std::string& prompt, const std::ve
                "1. Check physical connections\n"
                "2. Verify remote device status\n"
                "3. Review recent configuration changes\n"
-               "4. Test with different cables if possible";
-    }
-
-    if (prompt.find("CPU") != std::string::npos || prompt.find("high") != std::string::npos) {
-        return "High CPU usage detected in the network devices. Here's my analysis:\n\n"
-               "**Potential Causes:**\n"
-               "- Heavy network traffic requiring more processing\n"
-               "- Routing protocol convergence events\n"
-               "- Security scanning or attacks\n"
-               "- Misconfigured QoS or traffic shaping\n\n"
-               "**Immediate Actions:**\n"
-               "1. Identify which processes are consuming CPU\n"
-               "2. Check for unusual traffic patterns\n"
-               "3. Review recent configuration changes\n"
-               "4. Monitor for security events\n\n"
-               "**Long-term Solutions:**\n"
-               "- Optimize routing protocols\n"
-               "- Implement traffic engineering\n"
-               "- Consider hardware upgrades if consistently high";
+               "4. Test with different cables if possible\n\n"
+               "Note: This is a simulated response. Enable AI integration to get real Claude analysis.";
     }
 
     // Default response
@@ -419,7 +510,8 @@ std::string AICommands::call_claude_api(const std::string& prompt, const std::ve
            "- Continue monitoring for any unusual patterns\n"
            "- Set up automated alerting for critical events\n"
            "- Regular log analysis to establish baseline behavior\n\n"
-           "Note: This is a simulated response. In production, this would be powered by Anthropic's Claude AI with real-time analysis.";
+           "Note: This is a simulated response. Enable AI integration with libcurl and OpenSSL to get real Claude analysis.";
+#endif
 }
 
 std::string AICommands::build_network_analysis_prompt(const std::string& user_question, const std::vector<std::string>& logs) {

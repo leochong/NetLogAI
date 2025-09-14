@@ -49,9 +49,8 @@ endif()
 
 # Optional packages for AI integration
 find_package(CURL QUIET)
-find_package(OpenSSL QUIET)
 
-if(CURL_FOUND AND OPENSSL_FOUND)
+if(CURL_FOUND)
     message(STATUS "AI integration dependencies found - enabling AI features")
     add_compile_definitions(ENABLE_AI_INTEGRATION=1)
 else()
@@ -114,12 +113,10 @@ if(unofficial-lua_FOUND)
 endif()
 
 # Link AI integration libraries if available
-if(CURL_FOUND AND OPENSSL_FOUND)
+if(CURL_FOUND)
     target_link_libraries(netlogai
         PRIVATE
         CURL::libcurl
-        OpenSSL::SSL
-        OpenSSL::Crypto
     )
 endif()
 
