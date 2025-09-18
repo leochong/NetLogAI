@@ -99,7 +99,12 @@
       "Bash(./netlogai-core/build/Release/netlogai.exe parser list)",
       "Bash(./netlogai-core/build/Release/netlogai.exe analyze test-logs/cisco-ios/interface/interface_flap.log)",
       "Bash(./netlogai-core/build/Release/netlogai.exe analyze test-logs/cisco-asa/security/firewall_blocks.log)",
-      "Bash(./netlogai-core/build/Release/netlogai.exe ask \"Analyze this BGP log for issues\" --file test-logs/cisco-ios/bgp/bgp_neighbor_down.log)"
+      "Bash(./netlogai-core/build/Release/netlogai.exe ask \"Analyze this BGP log for issues\" --file test-logs/cisco-ios/bgp/bgp_neighbor_down.log)",
+      "Bash(./netlogai-core/build/Release/netlogai.exe device help)",
+      "Bash(./netlogai-core/build/Release/netlogai.exe device list)",
+      "Bash(./netlogai-core/build/Release/netlogai.exe device discover-gns3:*)",
+      "Bash(./netlogai-core/build/Release/netlogai.exe device show Router1)",
+      "Bash(./netlogai-core/build/Release/netlogai.exe device add-gns3:*)"
     ],
     "deny": [],
     "ask": []

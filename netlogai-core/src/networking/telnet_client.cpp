@@ -155,8 +155,8 @@ bool TelnetClient::wait_for_data(int timeout_ms) {
     timeout.tv_sec = timeout_ms / 1000;
     timeout.tv_usec = (timeout_ms % 1000) * 1000;
 
-    int result = select(static_cast<int>(socket_ + 1), &read_fds, nullptr, nullptr, &timeout);
-    return result > 0;
+    int result = select(static_cast<int>(socket_) + 1, &read_fds, nullptr, nullptr, &timeout);
+    return result > 0 && FD_ISSET(socket_, &read_fds);
 }
 
 std::string TelnetClient::read_available_data() {
@@ -169,8 +169,35 @@ std::string TelnetClient::read_available_data() {
         log_raw_data(data, false);
         return data;
     }
-
     return "";
+}
+
+std::string TelnetClient::receive_until_prompt(const std::string& expected_prompt, int timeout_ms) {
+    auto start_time = std::chrono::steady_clock::now();
+    std::string accumulated_output;
+
+    while (true) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start_time).count();
+
+        if (elapsed >= timeout_ms) {
+            break;
+        }
+
+        std::string data = receive_data(100);
+        if (!data.empty()) {
+            std::string cleaned;
+            handle_telnet_negotiation(data, cleaned);
+            accumulated_output += cleaned;
+
+            // Check if we found the expected prompt
+            if (is_expected_prompt(accumulated_output, expected_prompt)) {
+                break;
+            }
+        }
+    }
+
+    return clean_output(accumulated_output);
 }
 
 TelnetCommandResult TelnetClient::send_command(const std::string& command,
@@ -180,134 +207,150 @@ TelnetCommandResult TelnetClient::send_command(const std::string& command,
     auto start_time = std::chrono::steady_clock::now();
 
     if (!connected_) {
-        result.error_message = "Not connected";
+        result.error_message = "Not connected to device";
         return result;
     }
 
     debug_log("Sending command: " + command);
 
     // Send command with newline
-    if (!send_data(command + "\r\n")) {
+    std::string cmd_with_newline = command + "\r\n";
+    if (!send_data(cmd_with_newline)) {
         result.error_message = "Failed to send command";
         return result;
     }
 
-    // Wait for response and prompt
+    // Wait for response
     std::string output = receive_until_prompt(expected_prompt, timeout_ms);
 
-    if (output.empty()) {
-        result.error_message = "Command timeout or no response";
-        return result;
-    }
-
-    // Clean up the output
-    result.output = clean_output(output);
     result.success = true;
-
-    auto end_time = std::chrono::steady_clock::now();
-    result.execution_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    result.output = output;
+    result.execution_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start_time);
 
     debug_log("Command completed in " + std::to_string(result.execution_time.count()) + "ms");
     return result;
 }
 
-std::string TelnetClient::receive_until_prompt(const std::string& expected_prompt, int timeout_ms) {
-    std::string accumulated_output;
+TelnetCommandResult TelnetClient::send_command_async(const std::string& command,
+                                                   std::function<void(const std::string&)> output_callback,
+                                                   const std::string& expected_prompt,
+                                                   int timeout_ms) {
+    TelnetCommandResult result;
     auto start_time = std::chrono::steady_clock::now();
 
+    if (!connected_) {
+        result.error_message = "Not connected to device";
+        return result;
+    }
+
+    // Send command
+    std::string cmd_with_newline = command + "\r\n";
+    if (!send_data(cmd_with_newline)) {
+        result.error_message = "Failed to send command";
+        return result;
+    }
+
+    // Receive data and call callback for each chunk
+    std::string accumulated_output;
     while (true) {
-        auto elapsed = std::chrono::steady_clock::now() - start_time;
-        if (elapsed > std::chrono::milliseconds(timeout_ms)) {
-            debug_log("Timeout waiting for prompt: " + expected_prompt);
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start_time).count();
+
+        if (elapsed >= timeout_ms) {
             break;
         }
 
-        std::string data = receive_data(500);
-        if (data.empty()) {
-            continue;
-        }
+        std::string data = receive_data(100);
+        if (!data.empty()) {
+            std::string cleaned;
+            handle_telnet_negotiation(data, cleaned);
+            accumulated_output += cleaned;
 
-        // Handle telnet negotiation
-        std::string clean_data;
-        handle_telnet_negotiation(data, clean_data);
-        accumulated_output += clean_data;
+            // Call callback with new data
+            if (!cleaned.empty()) {
+                output_callback(cleaned);
+            }
 
-        // Check for prompt in the last few lines
-        std::istringstream stream(accumulated_output);
-        std::string line;
-        std::vector<std::string> lines;
-
-        while (std::getline(stream, line)) {
-            lines.push_back(line);
-        }
-
-        // Check last few lines for prompt
-        for (int i = std::max(0, static_cast<int>(lines.size()) - 3); i < static_cast<int>(lines.size()); ++i) {
-            if (is_expected_prompt(lines[i], expected_prompt)) {
-                debug_log("Found expected prompt: " + lines[i]);
-                return accumulated_output;
+            // Check if we found the expected prompt
+            if (is_expected_prompt(accumulated_output, expected_prompt)) {
+                break;
             }
         }
     }
 
-    return accumulated_output;
+    result.success = true;
+    result.output = clean_output(accumulated_output);
+    result.execution_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start_time);
+
+    return result;
 }
 
 void TelnetClient::handle_telnet_negotiation(const std::string& data, std::string& output) {
     output.clear();
 
     for (size_t i = 0; i < data.length(); ++i) {
-        unsigned char c = static_cast<unsigned char>(data[i]);
+        unsigned char byte = static_cast<unsigned char>(data[i]);
 
-        if (c == static_cast<unsigned char>(TelnetCommand::IAC) && i + 2 < data.length()) {
+        if (byte == static_cast<unsigned char>(TelnetCommand::IAC)) {
             // Handle telnet command
-            unsigned char cmd = static_cast<unsigned char>(data[i + 1]);
-            unsigned char option = static_cast<unsigned char>(data[i + 2]);
+            if (i + 2 < data.length()) {
+                TelnetCommand cmd = static_cast<TelnetCommand>(data[i + 1]);
+                TelnetOption option = static_cast<TelnetOption>(data[i + 2]);
 
-            process_telnet_option(static_cast<TelnetCommand>(cmd), static_cast<TelnetOption>(option));
-            i += 2; // Skip the command and option bytes
-        } else if (c >= 32 || c == '\n' || c == '\r' || c == '\t') {
-            // Printable character or whitespace
-            output += static_cast<char>(c);
+                process_telnet_option(cmd, option);
+                i += 2; // Skip the command and option bytes
+            }
+        } else {
+            // Regular character
+            output += static_cast<char>(byte);
         }
-        // Ignore other control characters
     }
 }
 
 void TelnetClient::send_telnet_command(TelnetCommand cmd, TelnetOption option) {
-    if (!connected_) return;
-
     std::string telnet_cmd;
     telnet_cmd += static_cast<char>(TelnetCommand::IAC);
     telnet_cmd += static_cast<char>(cmd);
     telnet_cmd += static_cast<char>(option);
 
     send_data(telnet_cmd);
-    debug_log("Sent telnet command: " + std::to_string(static_cast<int>(cmd)) + " " + std::to_string(static_cast<int>(option)));
 }
 
 void TelnetClient::process_telnet_option(TelnetCommand cmd, TelnetOption option) {
-    debug_log("Processing telnet option: " + std::to_string(static_cast<int>(cmd)) + " " + std::to_string(static_cast<int>(option)));
+    debug_log("Processing telnet option: " + std::to_string(static_cast<int>(cmd)) +
+              " " + std::to_string(static_cast<int>(option)));
 
     switch (cmd) {
         case TelnetCommand::DO:
-            if (option == TelnetOption::ECHO || option == TelnetOption::SGA) {
+            // Server wants us to enable an option
+            if (option == TelnetOption::TTYPE) {
                 send_telnet_command(TelnetCommand::WILL, option);
             } else {
                 send_telnet_command(TelnetCommand::WONT, option);
             }
             break;
+
+        case TelnetCommand::DONT:
+            // Server doesn't want us to use an option
+            send_telnet_command(TelnetCommand::WONT, option);
+            break;
+
         case TelnetCommand::WILL:
+            // Server will enable an option
             if (option == TelnetOption::ECHO || option == TelnetOption::SGA) {
                 send_telnet_command(TelnetCommand::DO, option);
             } else {
                 send_telnet_command(TelnetCommand::DONT, option);
             }
             break;
-        case TelnetCommand::DONT:
+
         case TelnetCommand::WONT:
-            // Acknowledge
+            // Server won't enable an option
+            send_telnet_command(TelnetCommand::DONT, option);
             break;
+
         default:
             break;
     }
@@ -316,39 +359,68 @@ void TelnetClient::process_telnet_option(TelnetCommand cmd, TelnetOption option)
 std::string TelnetClient::clean_output(const std::string& raw_output) {
     std::string cleaned = raw_output;
 
-    // Remove carriage returns
+    // Remove common control characters
     cleaned.erase(std::remove(cleaned.begin(), cleaned.end(), '\r'), cleaned.end());
 
     // Remove ANSI escape sequences
-    std::regex ansi_regex(R"(\x1b\[[0-9;]*[mGKHf])");
+    std::regex ansi_regex(R"(\x1B\[[0-9;]*[a-zA-Z])");
     cleaned = std::regex_replace(cleaned, ansi_regex, "");
 
-    // Remove excessive newlines
-    std::regex multiple_newlines(R"(\n{3,})");
-    cleaned = std::regex_replace(cleaned, multiple_newlines, "\n\n");
+    // Remove backspace sequences
+    std::regex backspace_regex(R"(.\x08)");
+    cleaned = std::regex_replace(cleaned, backspace_regex, "");
 
     return cleaned;
 }
 
-bool TelnetClient::is_expected_prompt(const std::string& line, const std::string& expected) {
-    if (expected == "#") {
-        return is_cisco_prompt(line);
-    }
+bool TelnetClient::is_cisco_prompt(const std::string& line) {
+    // Look for Cisco IOS prompts like "Router>", "Router#", "Router(config)#"
+    std::regex cisco_regex(R"([A-Za-z0-9\-_]+[>#]\s*$)");
+    std::regex config_regex(R"([A-Za-z0-9\-_]+\([^)]+\)[>#]\s*$)");
 
-    return line.find(expected) != std::string::npos;
+    return std::regex_search(line, cisco_regex) || std::regex_search(line, config_regex);
 }
 
-bool TelnetClient::is_cisco_prompt(const std::string& line) {
-    // Remove leading/trailing whitespace
-    std::string trimmed = line;
-    trimmed.erase(0, trimmed.find_first_not_of(" \t\n\r"));
-    trimmed.erase(trimmed.find_last_not_of(" \t\n\r") + 1);
+bool TelnetClient::is_expected_prompt(const std::string& line, const std::string& expected) {
+    if (expected == "#") {
+        return is_cisco_prompt(line) && line.find('#') != std::string::npos;
+    } else if (expected == ">") {
+        return is_cisco_prompt(line) && line.find('>') != std::string::npos;
+    } else {
+        return line.find(expected) != std::string::npos;
+    }
+}
 
-    if (trimmed.empty()) return false;
+std::string TelnetClient::extract_hostname_from_prompt(const std::string& prompt) {
+    std::regex hostname_regex(R"(([A-Za-z0-9\-_]+)[>#])");
+    std::smatch match;
 
-    // Check for common Cisco prompts
-    return (trimmed.back() == '#' || trimmed.back() == '>') &&
-           trimmed.find_first_of(" \t") == std::string::npos;
+    if (std::regex_search(prompt, match, hostname_regex)) {
+        return match[1].str();
+    }
+
+    return "";
+}
+
+void TelnetClient::debug_log(const std::string& message) {
+    if (debug_mode_) {
+        std::cout << "[TelnetClient] " << message << std::endl;
+    }
+}
+
+void TelnetClient::log_raw_data(const std::string& data, bool sent) {
+    if (debug_mode_) {
+        std::cout << "[" << (sent ? "SENT" : "RECV") << "] ";
+        for (char c : data) {
+            if (std::isprint(c)) {
+                std::cout << c;
+            } else {
+                std::cout << "\\x" << std::hex << std::setw(2) << std::setfill('0')
+                         << static_cast<unsigned char>(c) << std::dec;
+            }
+        }
+        std::cout << std::endl;
+    }
 }
 
 // Cisco IOS specific operations
@@ -356,100 +428,120 @@ TelnetCommandResult TelnetClient::cisco_login(const std::string& username, const
     TelnetCommandResult result;
 
     if (!connected_) {
-        result.error_message = "Not connected";
+        result.error_message = "Not connected to device";
         return result;
     }
 
-    // Wait for login prompt or check if already logged in
-    std::string initial_data = receive_data(3000);
+    // Wait for initial prompt or login
+    std::string initial_output = receive_until_prompt(":", 5000);
 
-    if (initial_data.find("Username:") != std::string::npos ||
-        initial_data.find("login:") != std::string::npos) {
-
-        if (!username.empty()) {
-            send_data(username + "\r\n");
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    if (initial_output.find("Username:") != std::string::npos ||
+        initial_output.find("login:") != std::string::npos) {
+        // Login required
+        if (username.empty()) {
+            result.error_message = "Username required but not provided";
+            return result;
         }
 
-        if (!password.empty() &&
-            (initial_data.find("Password:") != std::string::npos || receive_data(2000).find("Password:") != std::string::npos)) {
-            send_data(password + "\r\n");
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        auto username_result = send_command(username, ":", 3000);
+        if (!username_result.success) {
+            result.error_message = "Failed to send username";
+            return result;
+        }
+
+        auto password_result = send_command(password, ">", 3000);
+        if (!password_result.success) {
+            result.error_message = "Failed to send password";
+            return result;
         }
     }
 
-    // Check if we got a prompt
-    std::string prompt_check = receive_data(2000);
-    if (is_cisco_prompt(prompt_check) || prompt_check.find(">") != std::string::npos) {
+    // Check if we're at a prompt
+    std::string prompt_check = receive_until_prompt(">", 2000);
+    if (is_cisco_prompt(prompt_check)) {
+        current_hostname_ = extract_hostname_from_prompt(prompt_check);
         result.success = true;
         result.output = prompt_check;
-        current_prompt_ = extract_hostname_from_prompt(prompt_check);
     } else {
-        result.error_message = "Login failed or no valid prompt received";
-        result.output = prompt_check;
+        result.error_message = "Failed to reach Cisco prompt";
     }
 
     return result;
 }
 
 TelnetCommandResult TelnetClient::cisco_enable(const std::string& enable_password) {
-    if (privileged_mode_) {
-        TelnetCommandResult result;
-        result.success = true;
-        result.output = "Already in privileged mode";
+    auto result = send_command("enable", ":", 3000);
+    if (!result.success) {
         return result;
     }
 
-    auto result = send_command("enable", "#", 5000);
-    if (result.success) {
-        if (result.output.find("Password:") != std::string::npos && !enable_password.empty()) {
-            result = send_command(enable_password, "#", 5000);
-        }
-
+    if (result.output.find("Password:") != std::string::npos) {
+        result = send_command(enable_password, "#", 3000);
         if (result.success) {
             privileged_mode_ = true;
         }
+    } else {
+        // Already in privileged mode or no enable password required
+        privileged_mode_ = true;
+    }
+
+    return result;
+}
+
+TelnetCommandResult TelnetClient::cisco_configure_terminal() {
+    auto result = send_command("configure terminal", "#", 3000);
+    if (result.success) {
+        in_config_mode_ = true;
+    }
+    return result;
+}
+
+TelnetCommandResult TelnetClient::cisco_exit_config() {
+    TelnetCommandResult result;
+
+    if (in_config_mode_) {
+        result = send_command("exit", "#", 3000);
+        if (result.success) {
+            in_config_mode_ = false;
+        }
+    } else {
+        result.success = true;
+        result.output = "Not in configuration mode";
     }
 
     return result;
 }
 
 std::vector<std::string> TelnetClient::cisco_show_logging(int max_lines) {
-    std::vector<std::string> logs;
+    std::vector<std::string> log_lines;
 
-    if (!connected_) {
-        return logs;
-    }
-
-    // Disable paging
-    send_command("terminal length 0", "#", 3000);
-
-    // Get logs
     auto result = send_command("show logging", "#", 10000);
     if (result.success) {
-        std::istringstream stream(result.output);
+        std::istringstream iss(result.output);
         std::string line;
         int line_count = 0;
 
-        while (std::getline(stream, line) && line_count < max_lines) {
-            if (!line.empty() && line.find("show logging") == std::string::npos) {
-                logs.push_back(line);
+        while (std::getline(iss, line) && line_count < max_lines) {
+            // Skip empty lines and prompts
+            if (!line.empty() && !is_cisco_prompt(line) &&
+                line.find("show logging") == std::string::npos) {
+                log_lines.push_back(line);
                 line_count++;
             }
         }
     }
 
-    return logs;
+    return log_lines;
 }
 
 // GNS3 specific operations
 TelnetCommandResult TelnetClient::gns3_connect_console(const std::string& gns3_host, int console_port) {
     TelnetCommandResult result;
-    auto connect_result = connect(gns3_host, console_port);
+    auto connection_result = connect(gns3_host, console_port);
 
-    result.success = connect_result.success;
-    result.error_message = connect_result.error_message;
-    result.output = connect_result.success ? "Connected to GNS3 console" : "";
+    result.success = connection_result.success;
+    result.error_message = connection_result.error_message;
+    result.output = connection_result.success ? "Connected to GNS3 console" : "";
     result.execution_time = std::chrono::milliseconds(0);
 
     return result;
@@ -462,103 +554,156 @@ std::vector<std::string> TelnetClient::gns3_collect_logs(const std::string& devi
         return logs;
     }
 
-    // Wait for device to be ready
+    // Try to detect if device is ready
     if (!gns3_detect_device_ready()) {
+        debug_log("Device not ready for commands");
         return logs;
     }
 
-    // Try to login (most GNS3 devices don't require authentication by default)
-    cisco_login("", "");
-
-    // Enable privileged mode if needed
-    cisco_enable("");
-
-    // Collect logs based on device type
     if (device_type == "cisco-ios" || device_type == "cisco-nxos") {
-        logs = cisco_show_logging();
+        // Try to collect Cisco logs
+        auto cisco_logs = cisco_show_logging(1000);
+        logs.insert(logs.end(), cisco_logs.begin(), cisco_logs.end());
+    } else {
+        // Generic log collection - try common commands
+        auto result = send_command("show log", "#", 5000);
+        if (result.success) {
+            std::istringstream iss(result.output);
+            std::string line;
+            while (std::getline(iss, line)) {
+                if (!line.empty() && !is_cisco_prompt(line)) {
+                    logs.push_back(line);
+                }
+            }
+        }
     }
 
     return logs;
 }
 
 bool TelnetClient::gns3_detect_device_ready() {
-    // Wait a bit for device boot
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-
-    // Try to get some response
-    send_data("\r\n");
-    std::string response = receive_data(3000);
-
-    // Check if we get any recognizable prompt or output
-    return !response.empty() && (response.find(">") != std::string::npos ||
-                                response.find("#") != std::string::npos ||
-                                response.find("login:") != std::string::npos);
-}
-
-std::string TelnetClient::extract_hostname_from_prompt(const std::string& prompt) {
-    std::regex prompt_regex(R"((\w+)[>#])");
-    std::smatch match;
-
-    if (std::regex_search(prompt, match, prompt_regex)) {
-        return match[1].str();
+    if (!connected_) {
+        return false;
     }
 
-    return "unknown";
-}
+    // Send a simple command to test responsiveness
+    std::string test_data = receive_data(1000);
 
-void TelnetClient::debug_log(const std::string& message) {
-    if (debug_mode_) {
-        std::cout << "[TELNET DEBUG] " << message << std::endl;
-    }
-}
-
-void TelnetClient::log_raw_data(const std::string& data, bool sent) {
-    if (debug_mode_) {
-        std::cout << "[TELNET " << (sent ? "SENT" : "RECV") << "] " << data.length() << " bytes" << std::endl;
-    }
+    // Check if we see a prompt in the data
+    return is_cisco_prompt(test_data) || test_data.find("#") != std::string::npos ||
+           test_data.find(">") != std::string::npos;
 }
 
 // GNS3TelnetHelper implementation
 std::vector<int> GNS3TelnetHelper::discover_gns3_console_ports(const std::string& gns3_host) {
-    std::vector<int> ports;
+    std::vector<int> available_ports;
 
-    // GNS3 typically uses ports starting from 5000
-    for (int port = 5000; port <= 5100; ++port) {
-        TelnetClient client(2); // Short timeout for discovery
-        auto result = client.connect(gns3_host, port);
+    // Common GNS3 console port range
+    for (int port = 5000; port < 5100; ++port) {
+        TelnetClient test_client(5); // 5 second timeout for testing
+        auto result = test_client.connect(gns3_host, port);
 
         if (result.success) {
-            ports.push_back(port);
-            client.disconnect();
+            available_ports.push_back(port);
+            test_client.disconnect();
         }
     }
 
-    return ports;
+    return available_ports;
 }
 
 std::string GNS3TelnetHelper::detect_device_type_via_console(const std::string& host, int port) {
     TelnetClient client(10);
-    auto result = client.connect(host, port);
+    auto connection_result = client.connect(host, port);
 
-    if (!result.success) {
+    if (!connection_result.success) {
         return "unknown";
     }
 
     client.set_debug_mode(false);
 
-    // Try to detect device type by sending a command
-    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    // Try to get some initial output
+    std::string initial_output = client.receive_data(2000);
 
-    client.send_data("\r\n");
-    std::string response = client.receive_data(3000);
+    // Look for Cisco IOS indicators
+    if (initial_output.find("IOS") != std::string::npos ||
+        initial_output.find("Cisco") != std::string::npos ||
+        initial_output.find("#") != std::string::npos ||
+        initial_output.find(">") != std::string::npos) {
 
-    if (response.find("IOS") != std::string::npos || response.find("Cisco") != std::string::npos) {
-        return "cisco-ios";
-    } else if (response.find("NX-OS") != std::string::npos) {
-        return "cisco-nxos";
+        // Try a show version command to distinguish between IOS variants
+        auto version_result = client.send_command("show version", "#", 5000);
+        if (version_result.success) {
+            if (version_result.output.find("NX-OS") != std::string::npos) {
+                client.disconnect();
+                return "cisco-nxos";
+            } else if (version_result.output.find("ASA") != std::string::npos) {
+                client.disconnect();
+                return "cisco-asa";
+            } else {
+                client.disconnect();
+                return "cisco-ios";
+            }
+        }
+
+        client.disconnect();
+        return "cisco-ios"; // Default to IOS if we can't determine exactly
     }
 
-    return "generic";
+    client.disconnect();
+    return "unknown";
+}
+
+std::vector<TelnetCommandResult> GNS3TelnetHelper::execute_commands_on_multiple_devices(
+    const std::vector<std::pair<std::string, int>>& devices,
+    const std::vector<std::string>& commands) {
+
+    std::vector<TelnetCommandResult> results;
+
+    for (const auto& device : devices) {
+        TelnetClient client(30);
+        auto connection_result = client.connect(device.first, device.second);
+
+        if (connection_result.success) {
+            for (const auto& command : commands) {
+                auto cmd_result = client.send_command(command, "#", 10000);
+                results.push_back(cmd_result);
+            }
+            client.disconnect();
+        } else {
+            TelnetCommandResult error_result;
+            error_result.success = false;
+            error_result.error_message = "Failed to connect to " + device.first + ":" + std::to_string(device.second);
+            results.push_back(error_result);
+        }
+    }
+
+    return results;
+}
+
+std::vector<std::string> GNS3TelnetHelper::collect_lab_logs(const std::string& gns3_host) {
+    std::vector<std::string> all_logs;
+
+    auto console_ports = discover_gns3_console_ports(gns3_host);
+
+    for (int port : console_ports) {
+        TelnetClient client(15);
+        auto connection_result = client.connect(gns3_host, port);
+
+        if (connection_result.success) {
+            std::string device_type = detect_device_type_via_console(gns3_host, port);
+            auto device_logs = client.gns3_collect_logs(device_type);
+
+            // Add device identifier to logs
+            for (const auto& log : device_logs) {
+                all_logs.push_back("[" + gns3_host + ":" + std::to_string(port) + "] " + log);
+            }
+
+            client.disconnect();
+        }
+    }
+
+    return all_logs;
 }
 
 } // namespace netlogai::networking
