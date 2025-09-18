@@ -1,4 +1,5 @@
 #include "device_commands.hpp"
+#include "networking/telnet_client.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -33,6 +34,11 @@ void DeviceCommands::register_commands(cli::CommandLine& cli) {
     // Register discovery commands
     cli.register_subcommand("device", "discover", discover_devices, "Auto-discover network devices");
     cli.register_subcommand("device", "scan", scan_network, "Scan network range for devices");
+
+    // Register GNS3 integration commands
+    cli.register_subcommand("device", "add-gns3", add_gns3_device, "Add GNS3 device with console access");
+    cli.register_subcommand("device", "discover-gns3", discover_gns3_lab, "Discover devices in GNS3 lab");
+    cli.register_subcommand("fetch", "gns3", fetch_gns3_logs, "Fetch logs from GNS3 devices");
 
     // Register help
     cli.register_subcommand("device", "help", [](const cli::CommandArgs&) {
@@ -644,6 +650,285 @@ int DeviceCommands::edit_device(const cli::CommandArgs& args) {
     std::cout << "Device editing not yet implemented.\n";
     std::cout << "This would allow modifying device configurations.\n";
     return 0;
+}
+
+// GNS3 Integration Implementation
+int DeviceCommands::add_gns3_device(const cli::CommandArgs& args) {
+    if (args.arg_count() < 2) {
+        std::cout << "Usage: netlogai device add-gns3 <device_name> <console_port> [--host <gns3_host>] [--type <device_type>]\n";
+        std::cout << "Examples:\n";
+        std::cout << "  netlogai device add-gns3 Router1 5000\n";
+        std::cout << "  netlogai device add-gns3 Switch1 5001 --host 192.168.1.100 --type cisco-nxos\n";
+        return 1;
+    }
+
+    std::string device_name = args.get_arg(0);
+    int console_port;
+    try {
+        console_port = std::stoi(args.get_arg(1));
+    } catch (const std::exception&) {
+        std::cerr << "Error: Invalid console port number\n";
+        return 1;
+    }
+
+    std::string gns3_host = args.get_option("host", "127.0.0.1");
+    std::string device_type = args.get_option("type", "cisco-ios");
+
+    // Test connection first
+    std::cout << "Testing GNS3 console connection to " << gns3_host << ":" << console_port << "...\n";
+
+    if (!test_gns3_console_connection(gns3_host, console_port)) {
+        std::cerr << "Error: Cannot connect to GNS3 console at " << gns3_host << ":" << console_port << "\n";
+        return 1;
+    }
+
+    // Create device profile
+    DeviceProfile profile;
+    profile.id = device_name + "_" + std::to_string(console_port);
+    profile.name = device_name;
+    profile.hostname = gns3_host;
+    profile.port = console_port;
+    profile.connection_type = DeviceConnectionType::GNS3_CONSOLE;
+    profile.auth_type = DeviceAuthType::PASSWORD;
+    profile.username = "";  // Most GNS3 devices don't require auth
+    profile.password = "";
+    profile.device_type = device_type;
+    profile.timeout_seconds = 30;
+    profile.enabled = true;
+
+    // Add standard log collection commands for Cisco devices
+    if (device_type == "cisco-ios" || device_type == "cisco-nxos") {
+        profile.commands = {"show logging", "show version", "show interfaces"};
+    }
+
+    // Check if device already exists
+    if (find_device_by_name(device_name) != nullptr) {
+        std::cerr << "Error: Device with name '" << device_name << "' already exists\n";
+        return 1;
+    }
+
+    device_profiles.push_back(profile);
+    save_device_profiles();
+
+    std::cout << "✅ GNS3 device '" << device_name << "' added successfully\n";
+    std::cout << "   Console: " << gns3_host << ":" << console_port << "\n";
+    std::cout << "   Type: " << device_type << "\n";
+    std::cout << "   Use 'netlogai fetch " << device_name << "' to collect logs\n";
+
+    return 0;
+}
+
+int DeviceCommands::discover_gns3_lab(const cli::CommandArgs& args) {
+    std::string gns3_host = args.get_option("host", "127.0.0.1");
+
+    std::cout << "🔍 Discovering GNS3 devices at " << gns3_host << "...\n";
+
+    auto discovered_devices = discover_gns3_devices(gns3_host);
+
+    if (discovered_devices.empty()) {
+        std::cout << "No GNS3 devices found or GNS3 server not running.\n";
+        std::cout << "Make sure GNS3 is running and has active devices.\n";
+        return 1;
+    }
+
+    std::cout << "\n📱 Found " << discovered_devices.size() << " GNS3 device(s):\n";
+    std::cout << std::string(60, '=') << "\n";
+
+    for (const auto& device : discovered_devices) {
+        std::cout << "Device: " << device.name << "\n";
+        std::cout << "  Console Port: " << device.port << "\n";
+        std::cout << "  Type: " << device.device_type << "\n";
+        std::cout << "  Status: " << (device.enabled ? "Active" : "Inactive") << "\n";
+
+        if (args.has_flag("add")) {
+            // Auto-add discovered devices
+            if (find_device_by_name(device.name) == nullptr) {
+                device_profiles.push_back(device);
+                std::cout << "  ✅ Added to NetLogAI\n";
+            } else {
+                std::cout << "  ⚠️  Already exists in NetLogAI\n";
+            }
+        } else {
+            std::cout << "  💡 Use --add flag to automatically add discovered devices\n";
+        }
+        std::cout << "\n";
+    }
+
+    if (args.has_flag("add")) {
+        save_device_profiles();
+        std::cout << "Device profiles saved. Use 'netlogai device list' to see all devices.\n";
+    }
+
+    return 0;
+}
+
+int DeviceCommands::fetch_gns3_logs(const cli::CommandArgs& args) {
+    if (args.arg_count() < 1) {
+        std::cout << "Usage: netlogai fetch gns3 <device_name> [--lines <count>]\n";
+        std::cout << "Examples:\n";
+        std::cout << "  netlogai fetch gns3 Router1\n";
+        std::cout << "  netlogai fetch gns3 all --lines 500\n";
+        return 1;
+    }
+
+    std::string device_name = args.get_arg(0);
+    int max_lines = std::stoi(args.get_option("lines", "1000"));
+
+    if (device_name == "all") {
+        // Fetch from all GNS3 devices
+        std::cout << "🔄 Fetching logs from all GNS3 devices...\n";
+
+        int success_count = 0;
+        int total_count = 0;
+
+        for (const auto& profile : device_profiles) {
+            if (profile.connection_type == DeviceConnectionType::GNS3_CONSOLE && profile.enabled) {
+                total_count++;
+                std::cout << "\n📡 Fetching logs from " << profile.name << "...\n";
+
+                auto logs = collect_gns3_device_logs(profile);
+                if (!logs.empty()) {
+                    std::cout << "✅ Collected " << logs.size() << " log entries from " << profile.name << "\n";
+
+                    // Display recent logs
+                    int display_count = std::min(5, static_cast<int>(logs.size()));
+                    std::cout << "Recent entries:\n";
+                    for (int i = logs.size() - display_count; i < static_cast<int>(logs.size()); ++i) {
+                        std::cout << "  " << logs[i] << "\n";
+                    }
+                    success_count++;
+                } else {
+                    std::cout << "⚠️  No logs collected from " << profile.name << "\n";
+                }
+            }
+        }
+
+        std::cout << "\n📊 Summary: Collected logs from " << success_count << "/" << total_count << " GNS3 devices\n";
+        return success_count > 0 ? 0 : 1;
+    } else {
+        // Fetch from specific device
+        auto* profile = find_device_by_name(device_name);
+        if (!profile) {
+            std::cerr << "Error: Device '" << device_name << "' not found\n";
+            return 1;
+        }
+
+        if (profile->connection_type != DeviceConnectionType::GNS3_CONSOLE) {
+            std::cerr << "Error: Device '" << device_name << "' is not a GNS3 console device\n";
+            return 1;
+        }
+
+        std::cout << "📡 Fetching logs from " << device_name << " via GNS3 console...\n";
+
+        auto logs = collect_gns3_device_logs(*profile);
+        if (logs.empty()) {
+            std::cout << "⚠️  No logs collected from " << device_name << "\n";
+            return 1;
+        }
+
+        std::cout << "✅ Collected " << logs.size() << " log entries\n";
+        std::cout << "\n📄 Recent log entries:\n";
+        std::cout << std::string(80, '-') << "\n";
+
+        int display_count = std::min(max_lines, static_cast<int>(logs.size()));
+        for (int i = logs.size() - display_count; i < static_cast<int>(logs.size()); ++i) {
+            std::cout << logs[i] << "\n";
+        }
+
+        return 0;
+    }
+}
+
+// Helper function implementations
+bool DeviceCommands::test_gns3_console_connection(const std::string& host, int port) {
+    try {
+        networking::TelnetClient client(5); // 5 second timeout for testing
+        auto result = client.connect(host, port);
+        client.disconnect();
+        return result.success;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+std::vector<DeviceProfile> DeviceCommands::discover_gns3_devices(const std::string& gns3_host) {
+    std::vector<DeviceProfile> discovered_devices;
+
+    // Use the GNS3TelnetHelper to discover console ports
+    auto console_ports = networking::GNS3TelnetHelper::discover_gns3_console_ports(gns3_host);
+
+    for (int port : console_ports) {
+        // Detect device type for each port
+        std::string device_type = networking::GNS3TelnetHelper::detect_device_type_via_console(gns3_host, port);
+
+        if (device_type != "unknown") {
+            DeviceProfile profile;
+            profile.id = "gns3_device_" + std::to_string(port);
+            profile.name = "GNS3-Device-" + std::to_string(port);
+            profile.hostname = gns3_host;
+            profile.port = port;
+            profile.connection_type = DeviceConnectionType::GNS3_CONSOLE;
+            profile.auth_type = DeviceAuthType::PASSWORD;
+            profile.username = "";
+            profile.password = "";
+            profile.device_type = device_type;
+            profile.timeout_seconds = 30;
+            profile.enabled = true;
+
+            // Add standard commands based on device type
+            if (device_type == "cisco-ios" || device_type == "cisco-nxos") {
+                profile.commands = {"show logging", "show version", "show interfaces"};
+            }
+
+            discovered_devices.push_back(profile);
+        }
+    }
+
+    return discovered_devices;
+}
+
+std::vector<std::string> DeviceCommands::collect_gns3_device_logs(const DeviceProfile& profile) {
+    std::vector<std::string> logs;
+
+    try {
+        networking::TelnetClient client(profile.timeout_seconds);
+        client.set_debug_mode(false); // Set to true for debugging
+
+        std::cout << "  Connecting to console at " << profile.hostname << ":" << profile.port << "...\n";
+
+        auto connect_result = client.connect(profile.hostname, profile.port);
+        if (!connect_result.success) {
+            std::cerr << "  ❌ Connection failed: " << connect_result.error_message << "\n";
+            return logs;
+        }
+
+        std::cout << "  ✅ Connected to device console\n";
+
+        // Collect logs using GNS3-specific method
+        auto device_logs = client.gns3_collect_logs(profile.device_type);
+
+        if (!device_logs.empty()) {
+            std::cout << "  📄 Successfully collected " << device_logs.size() << " log entries\n";
+            logs = device_logs;
+        } else {
+            std::cout << "  ⚠️  No logs available from device\n";
+        }
+
+        client.disconnect();
+
+    } catch (const std::exception& e) {
+        std::cerr << "  ❌ Exception during log collection: " << e.what() << "\n";
+    }
+
+    return logs;
+}
+
+bool DeviceCommands::test_telnet_connection(const DeviceProfile& profile) {
+    if (profile.connection_type == DeviceConnectionType::TELNET ||
+        profile.connection_type == DeviceConnectionType::GNS3_CONSOLE) {
+        return test_gns3_console_connection(profile.hostname, profile.port);
+    }
+    return false;
 }
 
 } // namespace netlogai::commands

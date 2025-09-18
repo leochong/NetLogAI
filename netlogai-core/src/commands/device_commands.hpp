@@ -12,7 +12,8 @@ enum class DeviceConnectionType {
     SSH,
     SNMP,
     HTTP,
-    TELNET
+    TELNET,
+    GNS3_CONSOLE  // GNS3 device console connection
 };
 
 // Device authentication methods
@@ -64,6 +65,11 @@ private:
     static int discover_devices(const cli::CommandArgs& args);
     static int scan_network(const cli::CommandArgs& args);
 
+    // GNS3 integration commands
+    static int add_gns3_device(const cli::CommandArgs& args);
+    static int discover_gns3_lab(const cli::CommandArgs& args);
+    static int fetch_gns3_logs(const cli::CommandArgs& args);
+
     // Helper functions
     static void show_device_help();
     static std::string get_device_config_path();
@@ -76,8 +82,14 @@ private:
     static std::string decrypt_password(const std::string& encrypted);
     static bool test_ssh_connection(const DeviceProfile& profile);
     static bool test_snmp_connection(const DeviceProfile& profile);
+    static bool test_telnet_connection(const DeviceProfile& profile);
     static std::vector<std::string> execute_remote_command(const DeviceProfile& profile, const std::string& command);
     static std::vector<std::string> collect_device_logs(const DeviceProfile& profile);
+
+    // GNS3 specific helpers
+    static std::vector<std::string> collect_gns3_device_logs(const DeviceProfile& profile);
+    static bool test_gns3_console_connection(const std::string& host, int port);
+    static std::vector<DeviceProfile> discover_gns3_devices(const std::string& gns3_host = "127.0.0.1");
 
     // Network discovery helpers
     static std::vector<std::string> scan_ip_range(const std::string& cidr);

@@ -1,0 +1,6 @@
+Jan 15 07:45:10.123: %SYS-5-CONFIG_I: Configured from console by admin on vty0 (192.168.1.50)
+Jan 15 07:45:15.456: %SYS-6-LOGGINGHOST_STARTSTOP: Logging to host 192.168.1.100 port 514 started - CLI initiated
+Jan 15 07:45:20.789: %SYS-5-CONFIG_I: Configured from console by netadmin on console
+Jan 15 07:46:00.012: %PARSER-5-CFGLOG_LOGGEDCMD: User:admin  logged command:interface gigabitethernet0/1
+Jan 15 07:46:01.345: %PARSER-5-CFGLOG_LOGGEDCMD: User:admin  logged command:ip address 192.168.1.1 255.255.255.0
+Jan 15 07:46:02.678: %PARSER-5-CFGLOG_LOGGEDCMD: User:admin  logged command:no shutdown

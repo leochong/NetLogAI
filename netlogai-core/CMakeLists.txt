@@ -97,6 +97,12 @@ file(GLOB_RECURSE COMMON_SOURCES
     "src/common/*.hpp"
 )
 
+# Networking module sources
+file(GLOB_RECURSE NETWORKING_SOURCES
+    "src/networking/*.cpp"
+    "src/networking/*.hpp"
+)
+
 # CLI source files
 file(GLOB CLI_SOURCES
     "src/cli/*.cpp"
@@ -116,6 +122,7 @@ add_executable(netlogai
     ${CORE_SOURCES}
     ${ANALYTICS_SOURCES}
     ${PLUGIN_SOURCES}
+    ${NETWORKING_SOURCES}
     ${COMMON_SOURCES}
     src/testing/plugin_test_framework.cpp
 )

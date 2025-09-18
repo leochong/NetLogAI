@@ -1,0 +1,6 @@
+Jan 15 12:15:30.123: %ETHPORT-5-IF_DOWN_LINK_FAILURE: Interface Ethernet1/1 is down (Link failure)
+Jan 15 12:15:30.124: %ETHPORT-5-IF_DOWN_ADMIN_DOWN: Interface Ethernet1/2 is down (Administratively down)
+Jan 15 12:15:35.456: %ETHPORT-5-IF_UP: Interface Ethernet1/1 is up in mode trunk
+Jan 15 12:15:40.789: %ETHPORT-5-IF_UP: Interface Ethernet1/2 is up in mode access
+Jan 15 12:16:00.012: %ETHPORT-5-IF_BANDWIDTH_CHANGE: Interface Ethernet1/3, operational bandwidth changed to 10000000 Kbit/sec
+Jan 15 12:16:05.345: %ETHPORT-5-IF_DUPLEX_MISMATCH: Interface Ethernet1/4, duplex mismatch with peer

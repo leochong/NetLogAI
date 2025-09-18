@@ -1,0 +1,7 @@
+Jan 15 11:45:10.123: %OSPF-5-ADJCHG: Process 1, Nbr 192.168.1.2 on GigabitEthernet0/0 from FULL to DOWN, Neighbor Down: Interface down or detached
+Jan 15 11:45:15.456: %OSPF-5-ADJCHG: Process 1, Nbr 192.168.1.2 on GigabitEthernet0/0 from DOWN to INIT, Received Hello
+Jan 15 11:45:16.789: %OSPF-5-ADJCHG: Process 1, Nbr 192.168.1.2 on GigabitEthernet0/0 from INIT to 2WAY, 2-Way Received
+Jan 15 11:45:17.012: %OSPF-5-ADJCHG: Process 1, Nbr 192.168.1.2 on GigabitEthernet0/0 from 2WAY to EXSTART, AdjOK?
+Jan 15 11:45:18.345: %OSPF-5-ADJCHG: Process 1, Nbr 192.168.1.2 on GigabitEthernet0/0 from EXSTART to EXCHANGE, Exchange Done
+Jan 15 11:45:19.678: %OSPF-5-ADJCHG: Process 1, Nbr 192.168.1.2 on GigabitEthernet0/0 from EXCHANGE to LOADING, Exchange Done
+Jan 15 11:45:20.901: %OSPF-5-ADJCHG: Process 1, Nbr 192.168.1.2 on GigabitEthernet0/0 from LOADING to FULL, Loading Done
