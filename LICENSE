@@ -1,0 +1,55 @@
+# NetLogAI License
+
+Copyright (c) 2024-2025 NetLogAI
+
+## Commercial Software License
+
+NetLogAI Core Platform is proprietary commercial software.
+
+### Permitted Use
+
+You are permitted to:
+- Download and use NetLogAI for personal and commercial network log analysis
+- Connect NetLogAI to your network devices for log collection and analysis
+- Use NetLogAI's AI features with your own API keys
+- Create custom parsers and plugins for use with NetLogAI
+
+### Restrictions
+
+You may NOT:
+- Reverse engineer, decompile, or disassemble the software
+- Redistribute or resell NetLogAI or its components
+- Remove or modify copyright notices or licensing information
+- Use NetLogAI as part of a competing product or service
+
+### Open Source Components
+
+NetLogAI includes and works with the following open source components under separate licenses:
+
+- **libnetlog** - MIT License (https://github.com/leochong/libnetlog)
+- **netlogai-plugin-sdk** - MIT License (https://github.com/leochong/netlogai-plugin-sdk)
+- **netlogai-parsers** - MIT License (https://github.com/leochong/netlogai-parsers)
+- **netlogai-docs** - Creative Commons BY 4.0 (https://github.com/leochong/netlogai-docs)
+
+See individual component repositories for their respective license terms.
+
+### Disclaimer
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+### Third-Party Libraries
+
+NetLogAI uses the following third-party libraries:
+- nlohmann/json (MIT License)
+- Lua (MIT License)
+- libssh (LGPL)
+
+See THIRD_PARTY_LICENSES.txt for complete third-party license information.
+
+### Contact
+
+For licensing inquiries: (contact information TBD)
+
+---
+
+**Note:** This is a simplified license for the v2.0.0 release. A comprehensive End User License Agreement (EULA) will be provided in future releases.
