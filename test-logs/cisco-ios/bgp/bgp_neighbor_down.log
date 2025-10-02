@@ -1,6 +1,0 @@
-Jan 15 10:30:45.123: %BGP-5-ADJCHANGE: neighbor 192.168.1.1 Down BGP session terminated
-Jan 15 10:30:45.124: %BGP-3-NOTIFICATION: sent to neighbor 192.168.1.1 4/0 (hold time expired) 0 bytes
-Jan 15 10:30:50.456: %BGP-5-ADJCHANGE: neighbor 10.0.0.1 Up
-Jan 15 10:31:15.789: %BGP-5-ADJCHANGE: neighbor 172.16.0.1 Down User reset
-Jan 15 10:31:16.012: %BGP-4-MAXPFXEXCEED: No. of IPv4 Unicast prefixes received from 192.168.1.1 reaches 75000, max 100000
-Jan 15 10:32:00.345: %BGP-3-NOTIFICATION: received from neighbor 192.168.1.1 6/2 (Cease/peer de-configured) 0 bytes

@@ -1,6 +1,0 @@
-Nov 12 10:30:25 R1 %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet0/1, changed state to up
-Nov 12 10:30:26 R1 %BGP-5-ADJCHANGE: neighbor 192.168.1.2 Up
-Nov 12 10:30:27 SW1 %LINK-3-UPDOWN: Interface Port-channel1, changed state to down
-Nov 12 10:30:28 [MYAPP] INFO: User login successful for admin@192.168.1.100
-Nov 12 10:30:29 myapp[1234]: Database connection established
-Nov 12 10:30:30 PALO_ALTO: 1,2023/11/12 10:30:30,001801000011,TRAFFIC,end,2048,2023/11/12 10:30:30,192.168.1.100,192.168.1.200,0.0.0.0,0.0.0.0,allow,443,80,tcp,trust,untrust,tunnel.1

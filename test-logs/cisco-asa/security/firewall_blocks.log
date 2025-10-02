@@ -1,6 +1,0 @@
-Jan 15 08:30:15.123: %ASA-6-110002: Failed to locate egress interface for TCP from inside:192.168.1.100/12345 to outside:8.8.8.8/53
-Jan 15 08:30:16.456: %ASA-4-106023: Deny tcp src inside:192.168.1.100/12345 dst outside:malicious-site.com/80 by access-group "inside_access_in" [0x0, 0x0]
-Jan 15 08:30:17.789: %ASA-6-302013: Built outbound TCP connection 12345 for outside:8.8.8.8/53 (8.8.8.8/53) to inside:192.168.1.100/12345 (192.168.1.100/12345)
-Jan 15 08:30:18.012: %ASA-6-302014: Teardown TCP connection 12345 for outside:8.8.8.8/53 to inside:192.168.1.100/12345 duration 0:00:01 bytes 1234 (TCP FINs)
-Jan 15 08:30:19.345: %ASA-1-106021: Deny TCP reverse path check from 10.0.0.1 to 192.168.1.1 on interface outside
-Jan 15 08:30:20.678: %ASA-4-313005: No matching connection for ICMP error message: icmp src outside:203.0.113.1 dst inside:192.168.1.100 (type 3, code 1)
