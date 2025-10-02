@@ -26,14 +26,34 @@ netlogai --version
 # Output: NetLogAI Core v2.0.0
 ```
 
+### Configure AI (Required for AI Features)
+
+```bash
+# Set up Anthropic Claude API (recommended)
+netlogai config ai --provider anthropic --api-key sk-ant-xxxxx
+
+# Or use OpenAI
+netlogai config ai --provider openai --api-key sk-xxxxx
+
+# Verify AI configuration
+netlogai ai-status
+```
+
+Get your API key:
+- **Anthropic Claude**: https://console.anthropic.com/
+- **OpenAI GPT**: https://platform.openai.com/api-keys
+
 ### First Commands
 
 ```bash
-# Analyze a log file
-netlogai analyze router-logs.txt
+# Check version
+netlogai --version
 
-# Ask AI about network issues
+# Ask AI about network issues (requires AI setup)
 netlogai ask "Why is BGP flapping on R1?"
+
+# Analyze log files (works without AI)
+netlogai analyze router-logs.txt
 
 # Launch interactive shell
 netlogai shell
